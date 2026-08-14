@@ -74,7 +74,8 @@ export const getOperationalSource=async key=>{
     query=query.order("source_row").range(offset,offset+999);const {data,error}=await query;if(error)throw new Error(`Supabase ${tableName}: ${error.message}`);
     all.push(...(data||[]));if((data||[]).length<1000)break;
   }
-  const rows=all.map(adapt);return{ok:true,data:rows,meta:{source:key,rows:rows.length,returnedRows:rows.length,hasMore:false,serverVersion:Date.now()},source:"supabase"};
+  const latestSync=all.reduce((max,row)=>{const value=new Date(row?.synced_at||0).getTime();return Number.isFinite(value)?Math.max(max,value):max;},0);
+  const rows=all.map(adapt);return{ok:true,data:rows,meta:{source:key,rows:rows.length,returnedRows:rows.length,hasMore:false,serverVersion:latestSync||Date.now(),serverTime:new Date(latestSync||Date.now()).toISOString()},source:"supabase"};
 };
 
 export async function fetchAllOperationalPages(dataset,params={},onPage=()=>{}){
