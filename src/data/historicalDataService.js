@@ -86,9 +86,37 @@ async function fetchSpecialAction_(action,params={}){
   if(!json?.ok)throw new Error(json?.error?.message||`Falló ${action}`);
   const value={...json,elapsedMs:Math.round(performance.now()-started),payloadBytes:new Blob([text]).size};await writeCachedSource(key,value);return value;
 }
+
+function fullOperationalWindowParams_(params={}){
+  const days=Math.max(1,Number(params.days)||7);
+  const endIso=String(params.hasta||"").slice(0,10);
+  const end=endIso?new Date(`${endIso}T12:00:00`):new Date();
+  const start=new Date(end);
+  start.setDate(start.getDate()-(days-1));
+  const ymd=d=>`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}-${String(d.getDate()).padStart(2,"0")}`;
+  return{
+    ...params,
+    desde:params.desde||ymd(start),
+    hasta:params.hasta||ymd(end),
+    limit:"all",
+    sortBy:"fecha",
+    sortDirection:"asc",
+  };
+}
+
 export const getRop02LatestByEquipmentProject=params=>ROP02_SOURCE==="legacy"?fetchSpecialAction_("get_rop02_latest_by_equipment_project",params):getLatestRop02ByEquipment(params).catch(error=>{console.warn("[ROP02] fallback latest legacy",error);return fetchSpecialAction_("get_rop02_latest_by_equipment_project",params);});
 export const getRop02MonthlySummary=params=>ROP02_SOURCE==="legacy"?fetchSpecialAction_("get_rop02_monthly_summary",params):getSupabaseMonthlySummary(params).catch(error=>{console.warn("[ROP02] fallback summary legacy",error);return fetchSpecialAction_("get_rop02_monthly_summary",params);});
-export const getRop02OperationalSnapshot=params=>ROP02_SOURCE==="legacy"?getRop02({...params,limit:"all"}):getSupabaseOperationalSnapshot(params).catch(error=>{console.warn("[ROP02] fallback operational snapshot legacy",error);return getRop02({...params,limit:"all"});});
+export const getRop02OperationalSnapshot=params=>{
+  const p=params||{};
+  // Los snapshots compactos sirven para vistas de estado actual (7 días).
+  // Ventanas analíticas más largas, como Vehículos (45 días), necesitan todos
+  // los partes ROP02 del período para no perder registros ni reemplazar el
+  // proyecto/lugar histórico cargado en cada parte.
+  if((Number(p.days)||7)>7)return getRop02(fullOperationalWindowParams_(p));
+  return ROP02_SOURCE==="legacy"
+    ?getRop02({...p,limit:"all"})
+    :getSupabaseOperationalSnapshot(p).catch(error=>{console.warn("[ROP02] fallback operational snapshot legacy",error);return getRop02({...p,limit:"all"});});
+};
 export const getRop02Stats=params=>ROP02_SOURCE==="legacy"?Promise.resolve(null):getSupabaseRop02Stats(params);
 export const getRop02Facets=params=>ROP02_SOURCE==="legacy"?Promise.resolve(null):getSupabaseRop02Facets(params);
 export const getRop02Rop05Control=params=>ROP02_SOURCE==="legacy"?Promise.resolve(null):getSupabaseRop02Rop05Control(params);
