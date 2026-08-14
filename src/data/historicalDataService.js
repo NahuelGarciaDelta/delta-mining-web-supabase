@@ -54,13 +54,21 @@ export async function fetchDatasetPage(dataset,params={}){
 }
 
 export async function getDataset(dataset,params={}){
+  const usesTypedSupabase=(dataset==="rop02"&&ROP02_SOURCE!=="legacy")||((dataset==="rop05"||dataset==="rma15")&&TYPED_SOURCE!=="legacy");
+  if(usesTypedSupabase){
+    const cached=await readDatasetQuery(dataset,params);
+    try{return await fetchDatasetPage(dataset,params);}
+    catch(error){
+      if(cached){
+        console.warn(`[${dataset.toUpperCase()}] Supabase no disponible; se usa caché local`,error);
+        return cached;
+      }
+      throw error;
+    }
+  }
+
   const cached=await readDatasetQuery(dataset,params);
   if(!cached)return fetchDatasetPage(dataset,params);
-  if(dataset==="rop02"&&ROP02_SOURCE!=="legacy"){
-    fetchDatasetPage(dataset,params).catch(()=>{});
-    if(import.meta.env.DEV)console.debug(`ROP02 | ${cached.source||"cache"} | ${cached.data?.length||0}/${cached.total||0} | 0ms | HIT`);
-    return cached;
-  }
   fetchSyncVersions(APPS_SCRIPT_URL).then(sync=>{
     const local=cached.versions||{},remote=sync?.versions||{};
     const changed=Object.keys(local).some(key=>Number(local[key]||0)!==Number(remote[key]||0));
@@ -117,7 +125,7 @@ export const getRop02OperationalSnapshot=params=>{
   // Ventanas analíticas más largas, como Vehículos, necesitan todos los
   // partes ROP02 correspondientes. Sin fechas explícitas, Vehículos replica
   // el comportamiento histórico de la app original y consulta todo ROP02.
-  if((Number(p.days)||7)>7)return getRop02(fullOperationalWindowParams_(p));
+  if((Number(p.days)||7)>7)return fetchDatasetPage("rop02",fullOperationalWindowParams_(p));
   return ROP02_SOURCE==="legacy"
     ?getRop02({...p,limit:"all"})
     :getSupabaseOperationalSnapshot(p).catch(error=>{console.warn("[ROP02] fallback operational snapshot legacy",error);return getRop02({...p,limit:"all"});});
