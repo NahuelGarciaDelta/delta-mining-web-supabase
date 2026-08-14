@@ -1,4 +1,5 @@
 import { getAuthenticatedUser } from "./authSession.js";
+import { fetchAction } from "./appsScriptApi.js";
 
 function actor() {
   const currentUser = getAuthenticatedUser();
@@ -34,10 +35,7 @@ async function postStock(url, payload) {
 }
 
 function getStock(url, action) {
-  const requestUrl = new URL(String(url || "").trim());
-  requestUrl.searchParams.set("action", action);
-  requestUrl.searchParams.set("_", String(Date.now()));
-  return fetch(requestUrl.toString(), { cache: "no-store", redirect: "follow" }).then(parseResponse);
+  return fetchAction(url, action, { compact: false, retries: 1 });
 }
 
 export function fetchStockStatus(url) { return getStock(url, "stock_excel_status"); }
