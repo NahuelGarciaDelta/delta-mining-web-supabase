@@ -1,3 +1,59 @@
+import {isSupabaseConfigured,requireSupabase} from "./supabaseClient.js";
+
+const GENERIC_SUPABASE_SOURCES=new Set([
+  "raba03","remitos_cargados","licitaciones_db","licitacion_hitos_db","licitacion_equipos_db",
+  "pm_config","pm_registros","movimientos_equipos"
+]);
+
+const SPECIAL_CACHE_ACTIONS=Object.freeze({
+  mantenimiento_programado:"mantenimiento_programado",
+  estados_solicitudes:"estados_solicitudes",
+  licitaciones_compartidas:"licitaciones_compartidas",
+  stock_excel_status:"stock_excel_status",
+  stock_excel_data:"stock_excel_data",
+  get_equipment_movements:"equipment_movements_all",
+  get_active_equipment_movements:"equipment_movements_active",
+});
+
+async function readGenericSourceFromSupabase_(source){
+  if(!GENERIC_SUPABASE_SOURCES.has(source)||!isSupabaseConfigured)return null;
+  const db=requireSupabase();
+  const {data,error}=await db.rpc("read_delta_dataset",{p_dataset:source});
+  if(error)throw error;
+  const rows=Array.isArray(data)?data:[];
+  const latest=rows.reduce((max,row)=>Math.max(max,Number(row?.source_version||0)),0);
+  const latestSync=rows.reduce((max,row)=>{
+    const t=new Date(row?.synced_at||0).getTime();
+    return Number.isFinite(t)?Math.max(max,t):max;
+  },0);
+  return{
+    ok:true,
+    source:"supabase",
+    data:rows.map(row=>({...((row&&row.row_data)||{}),_sourceRow:row?.source_row,_sourceDataset:source})),
+    meta:{source,rows:rows.length,returnedRows:rows.length,serverVersion:latest||latestSync,serverTime:new Date(latestSync||Date.now()).toISOString()},
+  };
+}
+
+export async function fetchSupabaseCachedAction(action){
+  const cacheKey=SPECIAL_CACHE_ACTIONS[action];
+  if(!cacheKey||!isSupabaseConfigured)return null;
+  const db=requireSupabase();
+  const {data,error}=await db.from("delta_special_cache").select("payload,updated_at").eq("cache_key",cacheKey).maybeSingle();
+  if(error)throw error;
+  if(!data?.payload)return null;
+  return{...data.payload,source:"supabase-cache",cacheUpdatedAt:data.updated_at};
+}
+
+async function fetchSupabaseVersions_(){
+  if(!isSupabaseConfigured)return null;
+  const db=requireSupabase();
+  const {data,error}=await db.rpc("delta_source_versions");
+  if(error)throw error;
+  const versions={};
+  (data||[]).forEach(row=>{versions[row.source_key]=Number(row.server_version||0);});
+  return{ok:true,versions,source:"supabase",serverTime:new Date().toISOString()};
+}
+
 export function expandCompactSource(src){
   if(!src||!src.compact||!Array.isArray(src.headers)||!Array.isArray(src.rows))return src;
   return {
@@ -98,7 +154,7 @@ export async function runWithConcurrency_(items,limit,worker){
   return results;
 }
 
-export async function fetchAction(url,action,{force=false,compact=true,retries=2,since="",timeoutMs=45000}={}){
+async function fetchAppsScriptAction_(url,action,{force=false,compact=true,retries=2,since="",timeoutMs=45000}={}){
   const params={};
   if(force)params.force="1";
   if(since&&!force)params.since=since;
@@ -131,12 +187,36 @@ export async function fetchAction(url,action,{force=false,compact=true,retries=2
   throw lastErr;
 }
 
-export async function fetchHealth(url){return fetchAction(url,"health",{compact:false});}
-export async function fetchSource(url,source,{force=false,since=""}={}){return fetchAction(url,source,{force,compact:true,since});}
+export async function fetchAction(url,action,options={}){
+  if(SPECIAL_CACHE_ACTIONS[action]){
+    try{
+      const cached=await fetchSupabaseCachedAction(action);
+      if(cached)return cached;
+    }catch(error){console.warn(`[${action}] caché Supabase no disponible; fallback Apps Script`,error);}
+  }
+  return fetchAppsScriptAction_(url,action,options);
+}
+
+export async function fetchHealth(url){return fetchAppsScriptAction_(url,"health",{compact:false});}
+
+export async function fetchSource(url,source,{force=false,since=""}={}){
+  if(GENERIC_SUPABASE_SOURCES.has(source)){
+    try{
+      const value=await readGenericSourceFromSupabase_(source);
+      if(value)return value;
+    }catch(error){console.warn(`[${source}] Supabase no disponible; fallback Apps Script`,error);}
+  }
+  return fetchAppsScriptAction_(url,source,{force,compact:true,since});
+}
+
 export async function fetchSyncVersions(url){
-  try{return await fetchAction(url,"get_data_versions",{compact:false,retries:1});}
+  try{
+    const sync=await fetchSupabaseVersions_();
+    if(sync)return sync;
+  }catch(error){console.warn("Manifest Supabase no disponible; fallback Apps Script",error);}
+  try{return await fetchAppsScriptAction_(url,"get_data_versions",{compact:false,retries:1});}
   catch(_){
-    try{return await fetchAction(url,"sync",{compact:false,retries:1});}
+    try{return await fetchAppsScriptAction_(url,"sync",{compact:false,retries:1});}
     catch(__){return null;}
   }
 }
