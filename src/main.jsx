@@ -1,6 +1,11 @@
 import React from "react";
 import { createRoot } from "react-dom/client";
 import App from "./App.jsx";
+import { installSupabaseReadBridge } from "./services/supabaseReadBridge.js";
+
+// Mientras las escrituras continúan en Apps Script, cualquier lectura especial
+// que todavía haga un módulo legacy se resuelve primero contra el espejo Supabase.
+installSupabaseReadBridge();
 
 createRoot(document.getElementById("root")).render(
   <React.StrictMode>
