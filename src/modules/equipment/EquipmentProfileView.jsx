@@ -8,6 +8,8 @@ import { cleanEquipmentCode, canonicalEquipmentCode } from "./equipmentCode.js";
 import {indexPersistedMovementsByEquipment,mergeEquipmentMovements} from "./equipmentMovementHistory.js";
 import {useEquipmentMovements} from "../../services/equipmentMovements.js";
 import { ResponsiveContainer, LineChart, Line, XAxis, YAxis, Tooltip, CartesianGrid, BarChart, Bar } from "recharts";
+import {fetchAllDatasetPages} from "../../data/historicalDataService.js";
+import {normalizeROP02} from "../../shared/domain/index.jsx";
 
 function norm(v){return String(v||"").normalize("NFD").replace(/[\u0300-\u036f]/g,"").toUpperCase().replace(/[^A-Z0-9]/g,"");}
 function pick(row,names){const keys=Object.keys(row||{});for(const n of names){const nn=norm(n);const exact=keys.find(k=>norm(k)===nn);if(exact)return row[exact];}for(const n of names){const nn=norm(n);const partial=keys.find(k=>norm(k).includes(nn)||nn.includes(norm(k)));if(partial)return row[partial];}return"";}
@@ -46,7 +48,7 @@ function maintenanceCostARS(row,insumosCatalog){
 }
 function Rma15UsdTooltip({active,payload,label}){if(!active||!payload?.length)return null;const value=Number(payload[0]?.value)||0;return <div style={{background:"rgba(23,23,23,.98)",border:`1px solid ${C.border}`,borderRadius:8,padding:"9px 12px",boxShadow:"0 8px 24px rgba(0,0,0,.45)"}}><div style={{fontSize:11,color:C.textSub,marginBottom:4}}>{label}</div><div style={{fontSize:12,fontWeight:800,color:C.purple}}>{formatUSDNumber(value)}</div></div>;}
 
-function EquipmentProfileView({listaEquipos=[],rop02All=[],rop05=[],rma15=[],insumos={},initialCode="",onSelectCode,usdRate}){
+function EquipmentProfileView({listaEquipos=[],rop02All:propRop02All=[],rop05=[],rma15=[],insumos={},initialCode="",onSelectCode,usdRate}){
   const [selected,setSelected]=useState(()=>cleanEquipmentCode(initialCode));
   const [detailKey,setDetailKey]=useState(()=>canonicalEquipmentCode(initialCode));
   const [pm,setPm]=useState({config:[],registros:[]});
@@ -54,6 +56,15 @@ function EquipmentProfileView({listaEquipos=[],rop02All=[],rop05=[],rma15=[],ins
   const [fechaH,setFechaH]=useState("");
   const [selectedMonth,setSelectedMonth]=useState("");
   const [activeTab,setActiveTab]=useState("resumen");
+  const [remoteRop02,setRemoteRop02]=useState(null);
+  useEffect(()=>{
+    if(!selected){setRemoteRop02([]);return;}
+    let alive=true;const rows=[];
+    fetchAllDatasetPages("rop02",{equipo:selected,desde:fechaD,hasta:fechaH,sortBy:"fecha",sortDirection:"asc"},page=>rows.push(...page))
+      .then(()=>{if(alive)setRemoteRop02(normalizeROP02(rows));}).catch(()=>{});
+    return()=>{alive=false;};
+  },[selected,fechaD,fechaH]);
+  const rop02All=remoteRop02??propRop02All;
   const {movements:sharedMovements}=useEquipmentMovements(rop02All,["equipmentProfile"]);
 
   // El selector debe responder de inmediato. La ficha pesada se actualiza en el

@@ -10,12 +10,14 @@ import {
 } from "./licitacionPlanillasData.js";
 import { AcquisitionCostSelector, LICITACIONES_STORAGE_KEY, createEmptyTender, loadLocalTenders, normalizeTender } from "./licitacionesState.jsx";
 import { registerRefreshTask } from "../../services/refreshManager.js";
+import {getRop02} from "../../data/historicalDataService.js";
+import {normalizeROP02} from "../../shared/domain/index.jsx";
 
 // Dependencias compartidas inyectadas desde App mientras se completa la modularización.
 let __deps = {};
 
 
-function LicitacionesView({listaEquipos=[],rop02All=[],rma15=[],usdRate=1,initialTab="nueva",readOnly=false,canDelete=false,canExport=true}){
+function LicitacionesView({listaEquipos=[],rop02All:propRop02All=[],rma15=[],usdRate=1,initialTab="nueva",readOnly=false,canDelete=false,canExport=true}){
   const { APPS_SCRIPT_URL, C, Icon, Spinner, MultiSel, multiIsAll, appAlert, appConfirm, dmNormKey, canonicalEquivalentMachineCode, cleanMachine, mainMachineCode } = __deps;
   const STORAGE_KEY=LICITACIONES_STORAGE_KEY;
   const emptyTender=createEmptyTender;
@@ -294,6 +296,14 @@ function LicitacionesView({listaEquipos=[],rop02All=[],rma15=[],usdRate=1,initia
   const hoyIso=new Date().toISOString().slice(0,10);
   const[datosEquiposDesde,setDatosEquiposDesde]=useState(()=>`${new Date().getFullYear()}-01-01`);
   const[datosEquiposHasta,setDatosEquiposHasta]=useState(hoyIso);
+  const[remoteRop02,setRemoteRop02]=useState(null);
+  useEffect(()=>{
+    let alive=true;
+    getRop02({desde:datosEquiposDesde,hasta:datosEquiposHasta,limit:"all",sortBy:"fecha",sortDirection:"asc"})
+      .then(result=>{if(alive)setRemoteRop02(normalizeROP02(result.data||[]));}).catch(()=>{});
+    return()=>{alive=false;};
+  },[datosEquiposDesde,datosEquiposHasta]);
+  const rop02All=remoteRop02??propRop02All;
   const[datosEquiposCategorias,setDatosEquiposCategorias]=useState("todos");
   const[datosEquiposEquipos,setDatosEquiposEquipos]=useState("todos");
   const[datosEquiposProyectos,setDatosEquiposProyectos]=useState("todos");

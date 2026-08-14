@@ -1,0 +1,21 @@
+MANTENIMIENTO — FILTROS INSTANTÁNEOS
+
+Problema corregido:
+MantenimientoRoute hacía una nueva consulta query_dataset a RMA15 en cada cambio
+de filtro. Eso generaba un estado temporal con KPIs en 0 mientras llegaba la red.
+
+Nuevo comportamiento:
+- RMA15 se carga una sola vez desde App / precarga global.
+- Mantenimiento recibe ese dataset completo.
+- Mes, año, desde, hasta, proyecto, máquina y tipo se filtran localmente.
+- No se consulta Apps Script al cambiar filtros.
+- Los KPIs y tablas cambian en el mismo render.
+- No hay estado intermedio en 0.
+
+Instalación:
+1. Descomprimir este ZIP en la raíz del proyecto, reemplazando el archivo.
+2. Ejecutar APLICAR_MANTENIMIENTO_INSTANTANEO.bat
+3. Si dice BUILD OK:
+   git add src/modules/mantenimiento/MantenimientoRoute.jsx
+   git commit -m "Hacer instantaneos los filtros de mantenimiento"
+   git push origin main

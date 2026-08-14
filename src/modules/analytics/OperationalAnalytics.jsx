@@ -3,6 +3,8 @@ import * as XLSX from "xlsx";
 import { C as UI_C } from "../../components/ui/index.jsx";
 import { getHoursExtremes } from "./hoursExtremes.js";
 import { getMonthlyCutoffRange } from "./monthlyCutoffRange.js";
+import {getRop02} from "../../data/historicalDataService.js";
+import {normalizeROP02} from "../../shared/domain/index.jsx";
 
 let C=UI_C, Icon, Spinner, Badge, StatCard, Card, Table, Sel, MultiSel, DateIn, PeriodMonthYear, TabBtn, AlertBanner, HelpTip;
 let fmtNum, fmtFecha, uniq, normDate, cleanMachine, canonicalEquivalentMachineCode, isRop02ControlMachineExcluded, dmMatchTipoMaquinaSeleccion, dmTipoMaquinaOptions, matchMulti, multiIsAll, multiIncludes, normalizeMachineCode, getMachineType, isExcluded, excelFromCols, proyColor, semaforo, appAlert;
@@ -16,8 +18,7 @@ function BtnExcel({onClick}){
     </button>
   );
 }
-function ViewRankingOperariosInner({rop02All,rop05,extState,setExtState}){
-  const rop02Prod=useMemo(()=>rop02All.filter(r=>!r._excluded&&r.estado==="TRABAJO"),[rop02All]);
+function ViewRankingOperariosInner({rop02All:propRop02All=[],rop05,extState,setExtState}){
   const proyecto=extState?.proyecto??"todos";
   const setProyecto=v=>setExtState(s=>({...s,proyecto:v}));
   const tipoMaquina=extState?.tipoMaquina??"todas";
@@ -30,6 +31,16 @@ function ViewRankingOperariosInner({rop02All,rop05,extState,setExtState}){
   const setFechaD=v=>setExtState(s=>({...s,fechaD:v}));
   const fechaH=extState?.fechaH??"";
   const setFechaH=v=>setExtState(s=>({...s,fechaH:v}));
+  const [remoteRop02,setRemoteRop02]=useState(null);
+  useEffect(()=>{
+    let alive=true,today=new Date(),from=new Date(today);from.setDate(from.getDate()-90);
+    const iso=d=>`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}-${String(d.getDate()).padStart(2,"0")}`;
+    const desde=modeR==="dia"?(fecha||iso(today)):(fechaD||iso(from)),hasta=modeR==="dia"?(fecha||iso(today)):(fechaH||iso(today));
+    getRop02({desde,hasta,limit:"all",sortBy:"fecha",sortDirection:"asc"}).then(result=>{if(alive)setRemoteRop02(normalizeROP02(result.data||[]));}).catch(()=>{});
+    return()=>{alive=false;};
+  },[modeR,fecha,fechaD,fechaH]);
+  const rop02All=remoteRop02??propRop02All;
+  const rop02Prod=useMemo(()=>rop02All.filter(r=>!r._excluded&&r.estado==="TRABAJO"),[rop02All]);
   const proyectos=useMemo(()=>uniq(rop02Prod.map(r=>r.proyecto)),[rop02Prod]);
 
   const filtered=useMemo(()=>rop02Prod.filter(r=>{
@@ -214,7 +225,7 @@ export function rangoTurnoPorFecha(date){
   const proximoCambio=addTurnoDays(inicio,CAMBIOS_TURNO_DIAS);
   return {inicio,fin,proximoCambio,grupo:grupoPorFecha(date),grupoSiguiente:grupoPorFecha(proximoCambio)};
 }
-function ViewCambiosTurnoInner({rop02All=[]}){
+function ViewCambiosTurnoInner({rop02All:propRop02All=[]}){
   const hoy=new Date();
   const MESES_TURNO=["Enero","Febrero","Marzo","Abril","Mayo","Junio","Julio","Agosto","Septiembre","Octubre","Noviembre","Diciembre"];
   const [mes,setMes]=useState(()=>new Date(hoy.getFullYear(),hoy.getMonth(),1,12));
@@ -257,6 +268,14 @@ function ViewCambiosTurnoInner({rop02All=[]}){
       rangoLabel:`${fmtFecha(rango.startISO)} al ${fmtFecha(rango.endISO)}`
     };
   },[filtroMesHoras,filtroAnioHoras]);
+  const [remoteRop02,setRemoteRop02]=useState(null);
+  useEffect(()=>{
+    let alive=true;
+    getRop02({desde:periodoHorasTurno.desde,hasta:periodoHorasTurno.hasta,limit:"all",sortBy:"fecha",sortDirection:"asc"})
+      .then(result=>{if(alive)setRemoteRop02(normalizeROP02(result.data||[]));}).catch(()=>{});
+    return()=>{alive=false;};
+  },[periodoHorasTurno]);
+  const rop02All=remoteRop02??propRop02All;
 
   const filasHorasTurnoBase=useMemo(()=>{
     return (rop02All||[]).filter(r=>{

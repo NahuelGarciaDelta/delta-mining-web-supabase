@@ -3,6 +3,8 @@ import { APPS_SCRIPT_URL as DEFAULT_APPS_SCRIPT_URL } from "../../config/app.js"
 import { PM_INITIAL_SEED } from "./pmInitialSeed.js";
 import { rangoTurnoPorFecha } from "../analytics/OperationalAnalytics.jsx";
 import { registerRefreshTask } from "../../services/refreshManager.js";
+import {getRop02OperationalSnapshot} from "../../data/historicalDataService.js";
+import {normalizeROP02} from "../../shared/domain/index.jsx";
 
 const DEFAULTS = Object.freeze({ intervalo: 250, alertaDesde: 200, atrasadoDesde: 350 });
 const ALL = "todos";
@@ -130,7 +132,7 @@ async function readJsonResponse(response, context) {
   return json;
 }
 
-export default function MantenimientoProgramadoView({ deps = {}, listaEquipos = [], rop02All = [], initialTab = "dashboard", onTabChange, readOnly = false }) {
+export default function MantenimientoProgramadoView({ deps = {}, listaEquipos = [], rop02All: propRop02All = [], initialTab = "dashboard", onTabChange, readOnly = false }) {
   const { C, Card, Badge, StatCard, MultiSel, LoadingMotoniveladora, APPS_SCRIPT_URL: injectedAppsScriptUrl, appAlert, appConfirm } = deps;
   const APPS_SCRIPT_URL = injectedAppsScriptUrl || DEFAULT_APPS_SCRIPT_URL;
   const [tab, setTab] = useState(initialTab || "dashboard");
@@ -154,6 +156,17 @@ export default function MantenimientoProgramadoView({ deps = {}, listaEquipos = 
   const [programacionEdit, setProgramacionEdit] = useState({ interno: "", fecha: today(), turno: "TURNO DIA", tecnico: "", duracionHs: 4, ubicacion: "", observaciones: "", estado: "PROGRAMADO" });
   const [repuestoEdit, setRepuestoEdit] = useState({ codigo: "", descripcion: "", tipoPM: "PM 250", cantidadMinima: 1, stockActual: 0, proyecto: "TODOS", observaciones: "" });
   const [equipoHistorial, setEquipoHistorial] = useState("");
+  const [remoteRop02, setRemoteRop02] = useState(null);
+  useEffect(() => {
+    let alive = true;
+    const from = parseDateValue(fechaDesde), to = parseDateValue(fechaHasta);
+    const days = from && to ? Math.max(1, Math.ceil((to - from) / 86400000) + 1) : 7;
+    getRop02OperationalSnapshot({days:Math.min(days,90)}).then(result => {
+      if (alive) setRemoteRop02(normalizeROP02(result.data || []));
+    }).catch(() => {});
+    return () => { alive = false; };
+  }, [fechaDesde, fechaHasta]);
+  const rop02All = remoteRop02 ?? propRop02All;
 
   useEffect(() => { setTab(initialTab || "dashboard"); }, [initialTab]);
   const changeTab = useCallback(next => {

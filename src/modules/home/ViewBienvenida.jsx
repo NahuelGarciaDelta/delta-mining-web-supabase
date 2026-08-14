@@ -10,6 +10,7 @@ import ExecutiveDashboard from "./ExecutiveDashboard.jsx";
 import { equipmentProjectKey, normalizeRop02Project, calculateHomeAvailabilityFromRop02, calculateOpenOtItems, getBajoSanJuanExclusionMap } from "./homeAvailability.js";
 import {useEquipmentMovements} from "../../services/equipmentMovements.js";
 import {getRma15,getRma15OpenOtSummary,getRop02LatestByEquipmentProject} from "../../data/historicalDataService.js";
+import {classifyRop02State} from "../../shared/rop02State.js";
 
 const norm=v=>String(v??"").toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g,"").replace(/[^a-z0-9]+/g," ").trim();
 const getVal=(row,cands)=>{const keys=Object.keys(row||{});for(const cand of cands){const w=norm(cand);for(const k of keys){const nk=norm(k);if(nk===w||nk.includes(w)||w.includes(nk))return row[k];}}return "";};
@@ -43,12 +44,12 @@ export default function ViewBienvenida({onOpenModule,onNavigate,rawSources={},rm
     let alive=true;
     getRop02LatestByEquipmentProject({}).then(response=>{
       if(!alive||!Array.isArray(response?.data))return;
-      const rows=response.data.map(row=>{const stateText=norm(row.ULTIMO_ESTADO||row.ultimoEstado||"");const estado=stateText==="fs"||stateText.includes("fuera de servicio")?"FS":stateText==="od"||stateText.includes("orden del dia")?"OD":stateText==="em"||stateText.includes("mantenimiento")?"EM":"TRABAJO";return{
+      const rows=response.data.map(row=>{const horas=toNum(row.HORAS??row.horas??0);const estado=classifyRop02State({hours:horas,originalState:row.ULTIMO_ESTADO||row.ultimoEstado||""});return{
         fecha:String(row.ULTIMA_FECHA||row.ultimaCarga||"").slice(0,10),
         maquina:row.INTERNO||row.equipo||"",
         proyecto:row.PROYECTO||row.proyecto||"",
         estado,
-        horas:toNum(row.HORAS??row.horas??0),
+        horas,
         supervisor:row.SUPERVISOR||row.supervisor||"",
         _snapshotActive:Number(row.CARGAS_7D??row.cargas7d??0)>0,
       }});

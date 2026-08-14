@@ -5,6 +5,8 @@ import { fetchAction } from "../../services/appsScriptApi.js";
 import { fetchStockData } from "../../services/stockService.js";
 import { PM_INITIAL_SEED } from "../mantenimiento/pmInitialSeed.js";
 import FleetUtilizationPanel from "./FleetUtilizationPanel.jsx";
+import {getRma15,getRop02,getRop02MonthlySummary} from "../../data/historicalDataService.js";
+import {normalizeRMA15,normalizeROP02} from "../../shared/domain/index.jsx";
 import {
   Area,
   AreaChart,
@@ -104,7 +106,7 @@ function Delta({value,unit="%"}){if(value==null||!Number.isFinite(value))return 
 function Kpi({icon,label,value,sub,deltaValue,color=C.blue,help}){return <div style={{minWidth:0,padding:"14px 14px 12px",borderRadius:12,border:`1px solid ${color}55`,background:`linear-gradient(145deg,${color}18,rgba(12,20,27,.78))`,boxShadow:"0 8px 24px rgba(0,0,0,.12)"}}><div style={{display:"flex",gap:9,alignItems:"center",minHeight:30}}><span style={{width:31,height:31,borderRadius:"50%",display:"grid",placeItems:"center",background:`${color}18`,border:`1px solid ${color}70`,flexShrink:0}}><Icon name={icon} size={15} color={color}/></span><span style={{fontSize:10,color:C.textSub,lineHeight:1.25,fontWeight:700,display:"inline-flex",alignItems:"center",gap:6}}>{label}<Help text={help||`Información sobre ${label}`}/></span></div><div style={{fontSize:24,fontWeight:900,letterSpacing:"-.03em",marginTop:9,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{value}</div><div style={{fontSize:9.5,color:C.textMuted,marginTop:6,display:"flex",gap:5,alignItems:"center",flexWrap:"wrap"}}><Delta value={deltaValue}/>{sub&&<span>vs {sub}</span>}</div></div>}
 function AlertRow({icon,color,title,description,count,onClick}){return <button type="button" onClick={onClick} style={{width:"100%",border:0,borderBottom:`1px solid ${C.border}`,background:"transparent",color:C.text,padding:"10px 12px",display:"grid",gridTemplateColumns:"34px 1fr auto 16px",gap:9,alignItems:"center",textAlign:"left",cursor:"pointer"}}><span style={{width:30,height:30,borderRadius:8,display:"grid",placeItems:"center",background:`${color}18`}}><Icon name={icon} size={16} color={color}/></span><span><strong style={{display:"block",fontSize:11}}>{title}</strong><span style={{fontSize:9,color:C.textMuted,lineHeight:1.35}}>{description}</span></span><strong style={{fontSize:20,color}}>{count}</strong><span style={{color:C.textMuted,fontSize:18}}>›</span></button>}
 
-export default function ExecutiveDashboard({rop02All=[],rop05=[],rma15=[],rawSources={},usdRate=1,onNavigate}){
+export default function ExecutiveDashboard({rop02All:propRop02All=[],rop05=[],rma15:propRma15=[],rawSources={},usdRate=1,onNavigate}){
   const today=new Date();
   const usdRateSafe=useMemo(()=>{
     const prop=Number(usdRate);
@@ -146,6 +148,20 @@ export default function ExecutiveDashboard({rop02All=[],rop05=[],rma15=[],rawSou
     if(chosen)return[chosen.start,chosen.end];
     return prevRange(from,to);
   },[from,to,comparisonMonth]);
+  const [remoteRop02,setRemoteRop02]=useState(null);
+  const [remoteRma15,setRemoteRma15]=useState(null);
+  useEffect(()=>{
+    let alive=true;
+    const desde=prevFrom<from?prevFrom:from,hasta=prevTo>to?prevTo:to;
+    Promise.all([
+      getRop02({desde,hasta,limit:"all",sortBy:"fecha",sortDirection:"asc"}),
+      getRop02MonthlySummary({desde,hasta}),
+      getRma15({desde,hasta,limit:"all",sortBy:"fecha",sortDirection:"asc"}),
+    ]).then(([detail,,maintenance])=>{if(alive){setRemoteRop02(normalizeROP02(detail.data||[]));setRemoteRma15((maintenance.data||[]).map(row=>normalizeRMA15({...row,_proyectoForzado:row.Proyecto||row.proyecto||"S/D"},{})));}}).catch(()=>{});
+    return()=>{alive=false;};
+  },[from,to,prevFrom,prevTo]);
+  const rop02All=remoteRop02??propRop02All;
+  const rma15=remoteRma15??propRma15;
   const current=useMemo(()=>safe(rop02All).filter(r=>inRange(r,from,to)&&!r?._excluded),[rop02All,from,to]);
   const previous=useMemo(()=>safe(rop02All).filter(r=>inRange(r,prevFrom,prevTo)&&!r?._excluded),[rop02All,prevFrom,prevTo]);
   const maintNow=useMemo(()=>safe(rma15).filter(r=>inRange(r,from,to)),[rma15,from,to]);

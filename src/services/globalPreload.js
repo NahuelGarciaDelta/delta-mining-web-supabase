@@ -1,4 +1,4 @@
-import {getRop02,getRop05,getRma15} from "../data/historicalDataService.js";
+import {getRop05,getRma15} from "../data/historicalDataService.js";
 
 let preloadPromise=null;
 let preloadDone=false;
@@ -19,7 +19,6 @@ export function preloadHistoricalDatasets(){
   };
 
   preloadPromise=Promise.allSettled([
-    getRop02(common),
     getRop05(common),
     getRma15(common)
   ]).then(results=>{

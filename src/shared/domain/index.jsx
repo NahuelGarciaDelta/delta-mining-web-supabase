@@ -3,6 +3,7 @@ import { C, multiIsAll } from "../../components/ui/index.jsx";
 import { appAlert } from "../../services/dialogService.js";
 import { LOGIN_BACKGROUND_URL } from "../../config/assets.js";
 import { cleanEquipmentCode, isMaintenanceCostMachine, maintenanceCostTypeFromFamily } from "../../modules/equipment/equipmentCode.js";
+import { classifyRop02State } from "../rop02State.js";
 
 const IMG_LOGIN_FONDO=LOGIN_BACKGROUND_URL;
 
@@ -747,17 +748,8 @@ function buildHorometroMapForLista(rop02All, fechaFiltro){
   });
   return map;
 }
-function detectEstado(trabajo,obs,hs){
-  // La fuente de verdad es la columna Cant. Hs.:
-  // "FS" o "FUERA DE SERVICIO" → FS
-  // "OD" u "ORDEN DEL DIA" → OD (Operativo a Disposición)
-  // "EM" → Equipo en mantenimiento
-  // cualquier número (o vacío) → TRABAJO efectivo
-  const hsStr=String(hs||"").trim().toUpperCase();
-  if(/\bFS\b/.test(hsStr)||hsStr.includes("FUERA DE SERVICIO"))return"FS";
-  if(/\bOD\b/.test(hsStr)||hsStr.includes("ORDEN DEL DIA")||hsStr.includes("ORDEN DEL DÍA"))return"OD";
-  if(/\bEM\b/.test(hsStr)||hsStr.includes("EQUIPO EN MANTENIMIENTO")||hsStr.includes("EN MANTENIMIENTO"))return"EM";
-  return"TRABAJO";
+function detectEstado(trabajo,obs,hs,estadoOriginal=""){
+  return classifyRop02State({hours:hs,description:trabajo,observations:obs,originalState:estadoOriginal});
 }
 // Normaliza nombres de proyecto: VICUÑA y sus variantes → FILO DEL SOL
 // ─── Normalización de nombres de personas ────────────────────────────────────
@@ -948,7 +940,7 @@ function normalizeROP02(rows,proyectoDefault){
       horasRaw:String(cantHs||"").trim(),horas:toNumber(cantHs),combustible:toNumber(combustibleRaw),
       aceite:String(aceiteRaw||"").trim(),tipo_trabajo:trabajo,
       desgaste:String(desgasteRaw||"").trim(),observaciones:obs,
-      estado:detectEstado(trabajo,obs,cantHs),
+      estado:detectEstado(trabajo,obs,cantHs,getValue(r,["estado","Estado","ESTADO"])),
       _excluded:isExcluded(maquina),_tipo:tipoEquipoROP02,
     };
   }).filter(r=>r.fecha&&r.maquina);

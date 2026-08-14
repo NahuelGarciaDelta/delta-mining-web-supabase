@@ -47,6 +47,17 @@ test("horas positivas y OD cuentan como disponibles, FS como no disponible",()=>
   assert.equal(result.disponibilidad,67);
 });
 
+test("EM y cero horas no se reclasifican como Trabajo ni inflan disponibilidad",()=>{
+  const result=calculateHomeAvailabilityFromRop02([
+    row("EXC-0001","2026-08-10",0,"EM"),
+    row("EXC-0002","2026-08-10",0,"OD"),
+  ]);
+  assert.equal(result.disponibles,1);
+  assert.equal(result.noDisponibles,1);
+  assert.equal(result.items.find(item=>item.interno==="EXC-0001")?.estado,"EM");
+  assert.equal(result.fsItems.length,0);
+});
+
 test("equipos sin registro dentro de la ventana de 7 dias no participan",()=>{
   const result=calculateHomeAvailabilityFromRop02([
     row("EXC-0001","2026-08-11",8),

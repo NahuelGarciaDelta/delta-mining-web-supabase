@@ -25,6 +25,7 @@ import OfflineBanner from "./components/OfflineBanner.jsx";
 import { useOnlineStatus } from "./hooks/useOnlineStatus.js";
 import { runRefreshTasks } from "./services/refreshManager.js";
 import { preloadHistoricalDatasets } from "./services/globalPreload.js";
+import { getOperationalSource } from "./data/operationalRepository.js";
 import { can, getPermissionSnapshot } from "./services/permissionService.js";
 import { APP_BUILD_LABEL } from "./app/version.js";
 import { EquipmentProfileView } from "./modules/equipment/index.js";
@@ -253,11 +254,11 @@ export default function App(){
 
   const viewDataReady=useMemo(()=>{
     if(view==="rop05"||view==="rop05Discriminacion")return sourceHasData("rop05");
-    if(view==="rop02")return sourceHasData("rop02_jm")||sourceHasData("rop02_fs")||sourceHasData("rop02_filosur")||sourceHasData("rop02_zorro");
+    if(view==="rop02")return true;
     if(view==="rma15")return sourceHasData("rma15_jm")||sourceHasData("rma15_fs");
     if(view==="insumos")return sourceHasData("insumos")||sourceHasData("rma15_jm")||sourceHasData("rma15_fs");
     if(view==="listaEquipos")return sourceHasData("lista_equipos");
-    if(view==="control")return sourceHasData("rop05")&&(sourceHasData("rop02_jm")||sourceHasData("rop02_fs")||sourceHasData("rop02_filosur")||sourceHasData("rop02_zorro"));
+    if(view==="control")return sourceHasData("rop05");
     return Object.keys(rawSources||{}).some(sourceHasData);
   },[view,sourceHasData,rawSources]);
 
@@ -353,24 +354,6 @@ export default function App(){
       setRop05(rop05Raw.filter(r=>dmProjectMatches(r.proyecto,proyectoUsuario)).map(r=>({...r,maquina:resolveEquipmentCodeAlias(r.maquina),tarea:normTarea(r.tarea)})));
     }else if(src.rop05){
       setRop05([]);
-    }
-
-    const rFS=src.rop02_fs?.ok&&src.rop02_fs.data?normalizeROP02(src.rop02_fs.data,"FILO DEL SOL"):[];
-    const rJM=src.rop02_jm?.ok&&src.rop02_jm.data?normalizeROP02(src.rop02_jm.data,"JOSE MARIA"):[];
-    const rFSur=src.rop02_filosur?.ok&&src.rop02_filosur.data?normalizeROP02(src.rop02_filosur.data,"FILO SUR"):[];
-    const rZorro=src.rop02_zorro?.ok&&src.rop02_zorro.data?normalizeROP02(src.rop02_zorro.data,"EL ZORRO"):[];
-    if(src.rop02_fs&&!src.rop02_fs.ok)errs.push({source:"ROP02 — Filo del Sol",...src.rop02_fs.error});
-    if(src.rop02_jm&&!src.rop02_jm.ok)errs.push({source:"ROP02 — José María",...src.rop02_jm.error});
-    if(src.rop02_filosur&&!src.rop02_filosur.ok)errs.push({source:"ROP02 — Filo Sur",...src.rop02_filosur.error});
-    if(src.rop02_zorro&&!src.rop02_zorro.ok)errs.push({source:"ROP02 — El Zorro",...src.rop02_zorro.error});
-
-    const allRop02=[...rFS,...rJM,...rFSur,...rZorro];
-    if(allRop02.length || src.rop02_fs || src.rop02_jm || src.rop02_filosur || src.rop02_zorro){
-      const allNames=[...allRop02.map(r=>r.supervisor),...allRop02.map(r=>r.operario),...rop05Raw.map(r=>r.supervisor)].filter(Boolean);
-      buildCanonicalMap(allNames);
-      const normalizedRop02=allRop02.map(r=>({...r,maquina:resolveEquipmentCodeAlias(r.maquina),supervisor:normName(r.supervisor),operario:normName(r.operario)}));
-      setRop02ControlAll(normalizedRop02);
-      setRop02All(normalizedRop02.filter(r=>dmProjectMatches(r.proyecto,proyectoUsuario)));
     }
 
     const insumosMap={};
@@ -496,7 +479,10 @@ export default function App(){
         return {key,value:localSource,skipped:true};
       }
 
-      const fetched=await fetchSource(APPS_SCRIPT_URL,key,{force,since:force?'':getCachedSourceTimestamp(cacheRecord)});
+      const typedKeys=new Set(["rop05","rma15_fs","rma15_jm","lista_equipos","insumos"]);
+      const fetched=typedKeys.has(key)
+        ?await getOperationalSource(key)
+        :await fetchSource(APPS_SCRIPT_URL,key,{force,since:force?'':getCachedSourceTimestamp(cacheRecord)});
       if(!fetched?.ok||!Array.isArray(fetched.data))throw new Error(fetched?.error?.message||'Respuesta sin datos válidos');
       const previous=localSource?.ok&&Array.isArray(localSource.data)?localSource:null;
       const value=mergeIncrementalSource(previous,fetched);
@@ -607,8 +593,7 @@ export default function App(){
 
       if(cancelled)return;
 
-      // Después calienta también el cache usado por query_dataset
-      // (ROP02 / ROP05 / RMA15 históricos).
+      // Después calienta el caché histórico legacy todavía usado por ROP05/RMA15.
       try{await preloadHistoricalDatasets();}catch(_){}
     };
 
@@ -1070,7 +1055,7 @@ export default function App(){
                   view={view} deps={createOficinaTecnicaDeps(BlockingDataLoader)} dataHydrated={dataHydrated} rawSources={rawSources}
                   sourceHasData={sourceHasData} listaEquipos={listaEquipos} rop02All={rop02All} rop02ControlAll={rop02ControlAll} rop05={rop05} rma15={rma15}
                   control={control} dashSt={dashSt} setDashSt={setDashSt} health={health} loading={loading}
-                  onLoadAll={()=>loadSources(["lista_equipos","rop02_fs","rop02_jm","rop02_filosur","rop02_zorro","rop05","rma15_fs","rma15_jm","insumos"])}
+                  onLoadAll={()=>loadSources(["lista_equipos","rop05","rma15_fs","rma15_jm","insumos"])}
                   onReloadLista={()=>loadSources(["lista_equipos"],{force:true})}
                   st02={st02} setSt02={setSt02} stHorometros={stHorometros} setStHorometros={setStHorometros}
                   stVeh={stVeh} setStVeh={setStVeh} stControlROP02={stControlROP02} setStControlROP02={setStControlROP02}
@@ -1079,8 +1064,8 @@ export default function App(){
                   stRma15CtrlEquipo={stRma15CtrlEquipo} setStRma15CtrlEquipo={setStRma15CtrlEquipo}
                   stCHC={stCHC} setStCHC={setStCHC} stCtrl={stCtrl} setStCtrl={setStCtrl}
                 /></ModuleErrorBoundary>}
-                {view==="cambiosTurno"&&(dataHydrated&&rop02All.length>0?<ModuleErrorBoundary name="Control de horas mensuales" onRetry={loadData}><ViewCambiosTurno deps={OPERATIONAL_ANALYTICS_DEPS} rop02All={rop02All}/></ModuleErrorBoundary>:<BlockingDataLoader label="Cargando control de horas mensuales..." />)}
-                {view==="ranking"&&(dataHydrated&&rop02All.length>0?<ModuleErrorBoundary name="Ranking de Operarios" onRetry={loadData}><ViewRankingOperarios deps={OPERATIONAL_ANALYTICS_DEPS} rop02All={rop02All} rop05={rop05} extState={stRanking} setExtState={setStRanking}/></ModuleErrorBoundary>:<BlockingDataLoader label="Cargando Ranking..." />)}
+                {view==="cambiosTurno"&&(dataHydrated?<ModuleErrorBoundary name="Control de horas mensuales" onRetry={loadData}><ViewCambiosTurno deps={OPERATIONAL_ANALYTICS_DEPS} rop02All={rop02All}/></ModuleErrorBoundary>:<BlockingDataLoader label="Cargando control de horas mensuales..." />)}
+                {view==="ranking"&&(dataHydrated?<ModuleErrorBoundary name="Ranking de Operarios" onRetry={loadData}><ViewRankingOperarios deps={OPERATIONAL_ANALYTICS_DEPS} rop02All={rop02All} rop05={rop05} extState={stRanking} setExtState={setStRanking}/></ModuleErrorBoundary>:<BlockingDataLoader label="Cargando Ranking..." />)}
                 {view==="mant"&&(viewDataReady?<ModuleErrorBoundary name="Mantenimiento" onRetry={loadData}><MantenimientoRoute mode="mantenimiento" deps={MANTENIMIENTO_DEPS} rma15={rma15} insumos={insumos} usdRate={usdRate} extState={stMant} setExtState={setStMant}/></ModuleErrorBoundary>:<BlockingDataLoader label="Cargando" />)}
                 {view==="distMant"&&(dataHydrated&&rma15.length>0?<ModuleErrorBoundary name="Distribución de mantenimientos" onRetry={loadData}><MantenimientoRoute mode="distribucion" deps={MANTENIMIENTO_DEPS} rma15={rma15}/></ModuleErrorBoundary>:<BlockingDataLoader label="Cargando Distribución de mantenimientos..." />)}
                 {["pmProgramado","pmDashboard","pmPlanificador","pmProgramacion","pmPanel","pmRealizado","pmRepuestos","pmGestion","pmConfig","pmHistorial"].includes(view)&&(dataHydrated&&listaEquipos.length>0?<ModuleErrorBoundary name="Mantenimiento Programado" onRetry={loadData}><MantenimientoRoute mode="programado" readOnly={!can("edit","MANTENIMIENTO")} deps={MANTENIMIENTO_DEPS} listaEquipos={listaEquipos} rop02All={rop02All} initialTab={({pmProgramado:"dashboard",pmDashboard:"dashboard",pmPlanificador:"planificador",pmProgramacion:"programacion",pmPanel:"panel",pmRealizado:"realizado",pmRepuestos:"repuestos",pmGestion:"gestion",pmConfig:"config",pmHistorial:"historial"})[view]} onTabChange={tab=>navigateToView(({dashboard:"pmDashboard",planificador:"pmPlanificador",programacion:"pmProgramacion",panel:"pmPanel",realizado:"pmRealizado",repuestos:"pmRepuestos",gestion:"pmGestion",config:"pmConfig",historial:"pmHistorial"})[tab]||"pmDashboard")}/></ModuleErrorBoundary>:<BlockingDataLoader label="Cargando Mantenimiento Programado..." />)}

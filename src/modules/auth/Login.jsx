@@ -1,16 +1,8 @@
 import React from "react";
 import { buildAuthenticatedUser, saveAuthenticatedSession } from "../../services/authSession.js";
+import { authenticateUser } from "../../services/appsScriptApi.js";
 
 export default function Login({onLogin,C,APPS_SCRIPT_URL,IMG_LOGIN_FONDO,LOGO,dmNormalizeAssignedProject}){
-  const USUARIOS_FALLBACK=[
-    "nahuel.garcia@deltamining.com.ar",
-    "melina.torrejon@deltamining.com.ar",
-    "jesica@deltamining.com.ar",
-    "franco.a@deltamining.com.ar",
-    "fernando.c@deltamining.com.ar",
-    "lucas.torres@deltamining.com.ar"
-  ];
-
   const[usuario,setUsuario]=React.useState("");
   const[pass,setPass]=React.useState("");
   const[error,setError]=React.useState("");
@@ -25,32 +17,6 @@ export default function Login({onLogin,C,APPS_SCRIPT_URL,IMG_LOGIN_FONDO,LOGO,dm
   };
 
   const normalizarMail=(v)=>String(v||"").trim().toLowerCase();
-  const usuarioActivo=(u)=>{
-    const activo=String(u?.activo??u?.Activo??u?.ACTIVO??"SI").trim().toUpperCase();
-    return !(activo==="NO"||activo==="FALSE"||activo==="0"||activo==="INACTIVO");
-  };
-
-  const cargarUsuariosAutorizados=async()=>{
-    try{
-      const res=await fetch(`${APPS_SCRIPT_URL}?action=usuarios&_=${Date.now()}`);
-      const json=await res.json();
-      if(!json||!json.ok||!Array.isArray(json.data))throw new Error(json?.error?.message||"No se pudo leer la hoja de usuarios");
-      const usuarios=json.data
-        .map(u=>({
-          email:normalizarMail(u.email||u.Email||u.mail||u.Mail||u.correo||u.Correo),
-          rol:String(u.rol||u.Rol||u.role||u.Role||"USUARIO").trim().toUpperCase(),
-          proyecto:String(u.proyecto||u.Proyecto||"TODOS").trim().toUpperCase(),
-          nombre:String(u.nombre||u.Nombre||u.name||u.Name||"").trim(),
-          activo:u.activo??u.Activo??"SI"
-        }))
-        .filter(u=>u.email&&usuarioActivo(u));
-      return usuarios;
-    }catch(err){
-      console.warn("No se pudo leer la hoja de usuarios. Se usa fallback local.",err);
-      return USUARIOS_FALLBACK.map(email=>({email,rol:email.includes("nahuel")||email.includes("mahuel")?"ADMIN":"USUARIO",proyecto:"TODOS",nombre:(email.split("@")[0].split(/[._-]+/)[0]||"Usuario").replace(/^./,c=>c.toUpperCase()),activo:"SI"}));
-    }
-  };
-
   const handleSubmit=async()=>{
     const mail=normalizarMail(usuario);
     if(!mail){
@@ -64,12 +30,7 @@ export default function Login({onLogin,C,APPS_SCRIPT_URL,IMG_LOGIN_FONDO,LOGO,dm
 
     setValidando(true);
     try{
-      const response=await fetch(APPS_SCRIPT_URL,{
-        method:"POST",
-        headers:{"Content-Type":"application/x-www-form-urlencoded;charset=UTF-8"},
-        body:new URLSearchParams({payload:JSON.stringify({action:"authenticate_user",email:mail,password:pass})})
-      });
-      const json=await response.json();
+      const json=await authenticateUser(APPS_SCRIPT_URL,mail,pass);
       if(!json?.ok){
         showError(json?.error?.message||"Usuario o contraseña incorrectos");
         return;
@@ -78,7 +39,8 @@ export default function Login({onLogin,C,APPS_SCRIPT_URL,IMG_LOGIN_FONDO,LOGO,dm
       saveAuthenticatedSession(authenticatedUser,{mustChangePassword:!!json.mustChangePassword,normalizeProject:dmNormalizeAssignedProject});
       onLogin(authenticatedUser);
     }catch(err){
-      showError("No se pudo validar el acceso. Revisá la conexión.");
+      console.error("No se pudo validar el acceso mediante Apps Script",err);
+      showError(err?.message||"No se pudo validar el acceso. Revisá la conexión.");
     }finally{
       setValidando(false);
     }

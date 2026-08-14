@@ -260,14 +260,17 @@ export function calculateHomeAvailabilityFromRop02(rop02Rows=[],admitidos={},opt
       excluidosBajoSanJuan+=1;
       continue;
     }
-    const isFs=!(item.horas>0)&&item.estados?.size===1&&item.estados.has("FS");
-    const estado=item.horas>0?"Trabajo":(isFs?"FS":(item.estados?.has("OD")?"OD":"Trabajo"));
+    const isFs=!(item.horas>0)&&item.estados?.has("FS");
+    const isEm=!(item.horas>0)&&item.estados?.has("EM");
+    const isOd=!(item.horas>0)&&item.estados?.has("OD");
+    const estado=item.horas>0?"Trabajo":(isOd?"OD":(isFs?"FS":(isEm?"EM":"SIN REGISTRO")));
     const detail={interno:item.code,lugar:item.lugar||"",estado,ultimoROP02:item.fecha,horas:Number(item.horas)||0};
     items.push(detail);
-    if(isFs){
+    if(item.horas>0||isOd)disponibles+=1;
+    else{
       noDisponibles+=1;
-      fsItems.push(detail);
-    }else disponibles+=1;
+      if(isFs)fsItems.push(detail);
+    }
   }
   const elegiblesAntesExclusiones=porEquipo.size;
   const elegiblesDespuesExclusiones=disponibles+noDisponibles;

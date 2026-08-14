@@ -4,7 +4,7 @@ export function createPagedDatasetController(fetchPage){
     const token=append?generation:++generation;
     const offset=append?state.nextOffset||state.rows.length:0;
     state={...state,loading:true};
-    const page=await fetchPage(dataset,{...params,limit:250,offset});
+    const page=await fetchPage(dataset,{...params,limit:params?.limit??250,offset});
     if(token!==generation)return{...state,stale:true};
     const rows=append?[...state.rows,...(page.data||[])]:[...(page.data||[])];
     state={rows,total:Number(page.total||rows.length),hasMore:Boolean(page.hasMore),nextOffset:page.nextOffset,loading:false};

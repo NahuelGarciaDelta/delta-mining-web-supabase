@@ -2,7 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
 
-const backend=fs.readFileSync(new URL("../AppsScript_Delta_Mining_OPS_FINAL.txt",import.meta.url),"utf8");
+const backend=fs.readFileSync(new URL("../AppsScript_Delta_Mining_OPS_ROP02_OK.txt",import.meta.url),"utf8");
 
 test("Apps Script expone consultas filtradas y ficha por equipo",()=>{
   assert.match(backend,/action === "query_dataset"/);

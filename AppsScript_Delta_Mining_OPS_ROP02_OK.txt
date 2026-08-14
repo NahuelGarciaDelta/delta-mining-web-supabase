@@ -1,3 +1,5 @@
+var DELTA_BACKEND_VERSION_ = "2026-08-14-ROP02-QUERY-V1";
+
 var SHEETS_CONFIG = {
   rop05: {
     id: "1HYlylloC0TMsOWTpwvZ8YaXk5RLRKZ2PmOlhc7TCovw",
@@ -156,6 +158,7 @@ function doGet(e) {
       return buildResponse({ ok: true, message: "Cache limpiada" });
     }
 
+    if (action === "backend_version" || action === "version_backend") return buildResponse({ ok: true, version: DELTA_BACKEND_VERSION_, queryDataset: true, rop02Latest: true, rop02MonthlySummary: true, deployedAt: new Date().toISOString() });
     if (action === "health") return buildResponse(handleHealth());
     if (action === "diag") return buildResponse(handleDiag());
     if (action === "sync" || action === "versions" || action === "get_data_versions") return buildResponse(handleSyncVersions_());
@@ -1663,16 +1666,18 @@ function handleAddListaEquipo_(rowObj) {
   sheet.getRange(nextRow, 1, 1, headers.length).setValues([values]);
 
   try { clearAllCache_(); bumpDatasetVersion_("lista_equipos"); } catch (e) {}
+  var typedSync = syncTypedWriteIfEnabled_("lista_equipos");
 
   return {
     ok: true,
     action: "add_lista_equipo",
+    supabase: typedSync,
     rowNumber: nextRow,
     message: "Equipo agregado correctamente."
   };
 }
 
-function handleUpdateListaEquipo_(originalKeys, rowObj) {
+function handleUpdateListaEquipo_(originalKeys, rowObj, skipTypedSync) {
   var config = SHEETS_CONFIG.lista_equipos;
   var ss = SpreadsheetApp.openById(config.id);
   var sheet = findSheetByGidOrName(ss, config.gid, config.sheet);
@@ -1800,10 +1805,12 @@ function handleUpdateListaEquipo_(originalKeys, rowObj) {
   sheet.getRange(targetRowNumber, 1, 1, lastCol).setValues([newValues]);
 
   try { clearAllCache_(); bumpDatasetVersion_("lista_equipos"); } catch (e) {}
+  var typedSync = skipTypedSync ? null : syncTypedWriteIfEnabled_("lista_equipos");
 
   return {
     ok: true,
     action: "update_lista_equipo",
+    supabase: typedSync,
     rowNumber: targetRowNumber,
     matchedBy: matchedBy,
     message: "Equipo actualizado correctamente."
@@ -1841,7 +1848,7 @@ function handleBulkUpdateListaEquiposFromApp_(updates) {
         return;
       }
 
-      var res = handleUpdateListaEquipo_(originalKeys, row);
+      var res = handleUpdateListaEquipo_(originalKeys, row, true);
       if (res && res.ok) {
         updatedRows++;
       } else {
@@ -1859,11 +1866,13 @@ function handleBulkUpdateListaEquiposFromApp_(updates) {
   });
 
   try { clearAllCache_(); bumpDatasetVersion_("lista_equipos"); } catch (e) {}
+  var typedSync = syncTypedWriteIfEnabled_("lista_equipos");
 
   return {
     ok: failedRows === 0,
     version: VERSION,
     action: "bulk_update_lista_equipos_from_app",
+    supabase: typedSync,
     updatedRows: updatedRows,
     skippedRows: skippedRows,
     failedRows: failedRows,
@@ -5211,3 +5220,145 @@ function handleStockExcelClear_(payload) {
     try { lock.releaseLock(); } catch (releaseError) {}
   }
 }
+
+/*******************************************************
+ * SUPABASE TIPADO - FASE 2 (NO MODIFICA ROP02)
+ * Propiedades requeridas:
+ *   DELTA_SUPABASE_URL
+ *   DELTA_SUPABASE_SERVICE_ROLE_KEY
+ *******************************************************/
+function syncTypedOperationalDatasetsToSupabase() {
+  var keys = ["rop05", "rma15_fs", "rma15_jm", "lista_equipos", "insumos"];
+  var results = {};
+  keys.forEach(function (key) { results[key] = syncTypedDatasetToSupabase_(key); });
+  return { ok: true, results: results, syncedAt: new Date().toISOString() };
+}
+
+function backfillTypedOperationalDatasetsToSupabase() {
+  return syncTypedOperationalDatasetsToSupabase();
+}
+
+function syncRop05ToSupabase() { return syncTypedDatasetToSupabase_("rop05"); }
+function syncRma15ToSupabase() {
+  return { ok: true, rma15_fs: syncTypedDatasetToSupabase_("rma15_fs"), rma15_jm: syncTypedDatasetToSupabase_("rma15_jm") };
+}
+function syncListaEquiposToSupabase() { return syncTypedDatasetToSupabase_("lista_equipos"); }
+function syncInsumosToSupabase() { return syncTypedDatasetToSupabase_("insumos"); }
+
+function syncTypedWriteIfEnabled_(key) {
+  var enabled = PropertiesService.getScriptProperties().getProperty("DELTA_TYPED_WRITES_ENABLED") === "1";
+  return enabled ? syncTypedDatasetToSupabase_(key) : { ok: true, skipped: true, reason: "DELTA_TYPED_WRITES_ENABLED no activado" };
+}
+
+function syncTypedDatasetToSupabase_(key) {
+  if (["rop05", "rma15_fs", "rma15_jm", "lista_equipos", "insumos"].indexOf(key) === -1) {
+    throw new Error("Dataset tipado no permitido: " + key);
+  }
+  var config = SHEETS_CONFIG[key];
+  var ss = SpreadsheetApp.openById(config.id);
+  var sheet = findSheetByGidOrName(ss, config.gid, config.sheet);
+  if (!sheet) throw new Error("No se encontró la hoja de " + key);
+  var lastRow = sheet.getLastRow();
+  var lastCol = sheet.getLastColumn();
+  var headers = getHeaders_(sheet, config.headerRow);
+  var values = lastRow > config.headerRow
+    ? sheet.getRange(config.headerRow + 1, 1, lastRow - config.headerRow, lastCol).getValues()
+    : [];
+  var rows = [];
+  values.forEach(function (valuesRow, index) {
+    if (!typedRowHasData_(valuesRow)) return;
+    var raw = {};
+    headers.forEach(function (header, col) { raw[String(header || "col_" + (col + 1))] = typedJsonValue_(valuesRow[col]); });
+    rows.push(mapTypedSourceRow_(key, headers, valuesRow, config.headerRow + 1 + index, config.proyecto, raw));
+  });
+  var response = typedSupabaseRpc_("sync_typed_dataset", { p_dataset: key, p_rows: rows });
+  response.sheetRows = rows.length;
+  response.lastPhysicalRow = lastRow;
+  return response;
+}
+
+function reconcileTypedOperationalDatasets() {
+  var expected = {};
+  ["rop05", "rma15_fs", "rma15_jm", "lista_equipos", "insumos"].forEach(function (key) {
+    var config = SHEETS_CONFIG[key];
+    var sheet = findSheetByGidOrName(SpreadsheetApp.openById(config.id), config.gid, config.sheet);
+    var values = sheet.getLastRow() > config.headerRow
+      ? sheet.getRange(config.headerRow + 1, 1, sheet.getLastRow() - config.headerRow, sheet.getLastColumn()).getValues()
+      : [];
+    expected[key] = values.filter(typedRowHasData_).length;
+  });
+  var actual = typedSupabaseRpc_("typed_operational_counts", {});
+  return { ok: true, expected: expected, actual: actual, note: "El cierre exige total=con_origen=con_fila y duplicados_fisicos=0." };
+}
+
+function mapTypedSourceRow_(key, headers, row, sourceRow, forcedProject, raw) {
+  function val(aliases) { return typedValueByAliases_(headers, row, aliases); }
+  function textValue(aliases) { var v = val(aliases); return v === null || v === undefined ? "" : String(v).trim(); }
+  function numberValue(aliases) { return typedNumber_(val(aliases)); }
+  function dateValue(aliases) { return typedDate_(val(aliases)); }
+  var out = { source_row: sourceRow, raw_data: raw };
+  if (key === "rop05") {
+    out.fecha = dateValue(["Fecha del Parte Diario", "Fecha"]);
+    out.mes = textValue(["Mes"]); out.ancho = numberValue(["ANCHO", "Ancho"]);
+    out.largo = numberValue(["LARGO", "Largo"]); out.profundidad = numberValue(["PROFUNDIDAD", "Profundidad"]);
+    out.tarea = textValue(["Tarea"]); out.proyecto = typedProject_(textValue(["Proyecto"]));
+    out.interno = typedMachine_(textValue(["Codigo Int", "Código Interno del Equipo", "Interno"]));
+    out.supervisor = textValue(["Supervisor"]); out.tipo_equipo = textValue(["Tipo Equipo"]);
+    out.numero_parte = textValue(["N° de Parte", "N de Parte", "Parte"]); out.unidad = textValue(["UNIDAD DE PRODUCTIVIDAD", "Unidad"]);
+    out.horas_productivas = numberValue(["CANTIDAD DE HS PRODUCTIVAS EFECTIVAS (SOLO CANTIDAD)", "Hs", "Horas"]);
+    out.cantidad_produccion = numberValue(["CANTIDAD DE PRODUCCIÓN DE LA TAREA REALIZADA (SIN UNIDADES DE MEDIDA)", "Cantidad"]);
+    out.observaciones = textValue(["Observaciones", "Observación", "Observacion"]);
+  } else if (key.indexOf("rma15_") === 0) {
+    out.fecha_ot = dateValue(["Fecha de OT", "Fecha OT", "Fecha"]); out.proyecto = typedProject_(forcedProject || textValue(["Proyecto", "proyecto"]));
+    out.equipo = textValue(["EQUIPO", "Equipo"]); out.interno = typedMachine_(textValue(["CODIGO N° INTERNO", "Código interno", "Codigo interno", "Interno"]));
+    out.km_hs = numberValue(["Km / hs", "Km/hs", "Km hs"]); out.tipo_mantenimiento = textValue(["TIPO DE MANTENIMIENTO", "Tipo mantenimiento"]);
+    out.equipo_operativo = typedBoolean_(val(["¿EQUIPO QUEDO OPERATIVO?", "EQUIPO QUEDO OPERATIVO", "Operativo"]));
+    out.turno = textValue(["TURNO EN EL QUE SE REALIZO LA INTERVENCION", "Turno"]); out.lugar = textValue(["LUGAR DONDE SE REALIZO LA INTERVENCION", "Lugar"]);
+    out.intervencion = textValue(["DESCRIPCION DE LA INTERVENCION REALIZADA", "Intervención", "Intervencion"]);
+    out.observaciones = textValue(["OBSERVACIONES", "Observaciones"]); out.mail_avisado = textValue(["MAIL AVISADO"]); out.insumos = [];
+    for (var slot = 1; slot <= 10; slot++) {
+      var code = textValue(["codigo " + slot, "código " + slot]); var name = textValue(["nombre " + slot]); var qty = numberValue(["cantidad " + slot]);
+      if (code || name || qty !== null) out.insumos.push({ posicion: slot, codigo: code, nombre: name, cantidad: qty });
+    }
+  } else if (key === "lista_equipos") {
+    out.horas = numberValue(["HORAS"]); out.marca = textValue(["Marca"]); out.modelo = textValue(["Modelo"]); out.potencia = textValue(["Potencia"]);
+    out.codigo_nuevo = textValue(["Codigo nuevo", "Código nuevo"]); out.numero_serie = textValue(["N° de serie", "Numero de serie"]);
+    out.vida_util_hs_km = numberValue(["Vida util hs/km", "Vida útil hs/km"]); out.lugar_alquiler = textValue(["Lugar de alquiler"]);
+    out.codigo_drusila = textValue(["Código de Drusila", "Codigo de Drusila"]); out.horas_trabajo_mes = numberValue(["Horas trab por mes"]);
+    out.tipo_combustible = textValue(["Tipo de combustible"]); out.anio_fabricacion = numberValue(["Año de fabricación", "Ano de fabricacion"]);
+    out.cantidad_neumaticos = numberValue(["Cantidad de neumaticos", "Cantidad de neumáticos"]); out.horas_hombre_mecanico = numberValue(["Horas hombre (Mecanico)"]);
+    out.consumo_combustible = textValue(["Combustible Lts/hs y km/lts"]); out.capacidad = textValue(["Capacidad"]); out.fecha_ingreso = dateValue(["Fecha ingreso"]);
+    out.costo_local_usd = numberValue(["Costo Local en dolares sin IVA"]); out.tarifa_mensual_usd = numberValue(["Tarifa Mensual alquiler en dolares"]);
+    out.familia = textValue(["Familia"]); out.costo_neumatico_unidad = numberValue(["Costo neumáticos unidad", "Costo neumaticos unidad"]); out.propiedad = textValue(["Propiedad"]);
+  } else {
+    out.codigo = textValue(["Codigo", "Código"]); out.descripcion = textValue(["Descripcion", "Descripción"]);
+    out.precio_unitario = numberValue(["Precio unitario", "Costo unitario", "Precio unitario con IVA"]); out.descripcion_adicional = textValue(["Descripcion adicional", "Descripción adicional"]);
+  }
+  return out;
+}
+
+function typedSupabaseRpc_(name, payload) {
+  var props = PropertiesService.getScriptProperties();
+  var url = String(props.getProperty("DELTA_SUPABASE_URL") || "").replace(/\/$/, "");
+  var key = String(props.getProperty("DELTA_SUPABASE_SERVICE_ROLE_KEY") || "");
+  if (!url || !key) throw new Error("Faltan DELTA_SUPABASE_URL / DELTA_SUPABASE_SERVICE_ROLE_KEY");
+  var response = UrlFetchApp.fetch(url + "/rest/v1/rpc/" + name, { method: "post", contentType: "application/json", headers: { apikey: key, Authorization: "Bearer " + key }, payload: JSON.stringify(payload), muteHttpExceptions: true });
+  var code = response.getResponseCode(); var body = response.getContentText();
+  if (code < 200 || code >= 300) throw new Error("Supabase RPC " + name + " (" + code + "): " + body);
+  return body ? JSON.parse(body) : { ok: true };
+}
+
+function typedSupabaseGet_(table, query) {
+  var props = PropertiesService.getScriptProperties(); var url = String(props.getProperty("DELTA_SUPABASE_URL") || "").replace(/\/$/, ""); var key = String(props.getProperty("DELTA_SUPABASE_SERVICE_ROLE_KEY") || "");
+  var response = UrlFetchApp.fetch(url + "/rest/v1/" + table + (query ? "?" + query : ""), { headers: { apikey: key, Authorization: "Bearer " + key }, muteHttpExceptions: true });
+  if (response.getResponseCode() >= 300) throw new Error(response.getContentText()); return JSON.parse(response.getContentText() || "[]");
+}
+
+function typedRowHasData_(row) { return row.some(function (v) { return v instanceof Date || (v !== null && v !== undefined && String(v).trim() !== ""); }); }
+function typedJsonValue_(v) { return v instanceof Date ? Utilities.formatDate(v, Session.getScriptTimeZone(), "yyyy-MM-dd") : (v === undefined ? null : v); }
+function typedDate_(v) { if (!v) return null; if (v instanceof Date) return Utilities.formatDate(v, Session.getScriptTimeZone(), "yyyy-MM-dd"); var d = String(v).trim(); var m = d.match(/^(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{4})$/); return m ? m[3] + "-" + ("0" + m[2]).slice(-2) + "-" + ("0" + m[1]).slice(-2) : (/^\d{4}-\d{2}-\d{2}$/.test(d) ? d : null); }
+function typedNumber_(v) { if (v === null || v === undefined || String(v).trim() === "") return null; if (typeof v === "number") return isFinite(v) ? v : null; var s = String(v).replace(/\s/g, "").replace(/\.(?=\d{3}(?:\D|$))/g, "").replace(",", ".").replace(/[^0-9.\-]/g, ""); var n = Number(s); return isFinite(n) ? n : null; }
+function typedBoolean_(v) { var s = normalizeText_(v); if (!s) return null; if (["si", "s", "true", "operativo", "1"].indexOf(s) !== -1) return true; if (["no", "n", "false", "no operativo", "0"].indexOf(s) !== -1) return false; return null; }
+function typedProject_(v) { var s = normalizeText_(v); if (s.indexOf("jose maria") !== -1 || s === "jm") return "JOSE MARIA"; if (s.indexOf("filo del sol") !== -1 || s === "fds") return "FILO DEL SOL"; if (s.indexOf("filo sur") !== -1) return "FILO SUR"; if (s.indexOf("zorro") !== -1) return "EL ZORRO"; return String(v || "").trim().toUpperCase(); }
+function typedMachine_(v) { var s = String(v || "").trim().toUpperCase(); return s === "RCP-0039" ? "RPC-0039" : s; }
+function typedValueByAliases_(headers, row, aliases) { var wanted = aliases.map(normalizeText_); for (var i = 0; i < headers.length; i++) { var h = normalizeText_(headers[i]); for (var j = 0; j < wanted.length; j++) if (h === wanted[j] || (wanted[j].length >= 12 && h.indexOf(wanted[j]) !== -1)) return row[i]; } return ""; }

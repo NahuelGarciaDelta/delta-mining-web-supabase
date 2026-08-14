@@ -35,6 +35,54 @@ export function buildAppsScriptUrl(baseUrl,action,params={}){
 
 export function sleep_(ms){return new Promise(resolve=>setTimeout(resolve,ms));}
 
+function authEndpointLabel(url){
+  try{
+    const parsed=new URL(String(url||"").trim());
+    return `${parsed.origin}/macros/s/[deployment]/exec`;
+  }catch(_){
+    return "Apps Script (URL invalida)";
+  }
+}
+
+export async function authenticateUser(url,email,password){
+  const endpoint=String(url||"").trim();
+  if(!endpoint||/REEMPLAZAR|TU_DEPLOYMENT|YOUR_/i.test(endpoint)){
+    throw new Error("VITE_APPS_SCRIPT_URL no contiene un deployment valido de Apps Script.");
+  }
+
+  const startedAt=Date.now();
+  let response;
+  try{
+    response=await fetch(endpoint,{
+      method:"POST",
+      headers:{"Content-Type":"application/x-www-form-urlencoded;charset=UTF-8"},
+      body:new URLSearchParams({payload:JSON.stringify({action:"authenticate_user",email,password})}),
+      cache:"no-store",
+      redirect:"follow"
+    });
+  }catch(error){
+    console.error("Error de red al autenticar con Apps Script",{
+      endpoint:authEndpointLabel(endpoint),action:"authenticate_user",
+      elapsedMs:Date.now()-startedAt,error:error?.name||"NetworkError"
+    });
+    throw new Error("No se pudo conectar con el servicio de autenticacion de Apps Script.");
+  }
+
+  const contentType=response.headers.get("content-type")||"";
+  const text=await response.text();
+  const isHtml=/^\s*</.test(text)||contentType.toLowerCase().includes("text/html");
+  console.info("Respuesta de autenticacion Apps Script",{
+    endpoint:authEndpointLabel(endpoint),action:"authenticate_user",
+    status:response.status,contentType,isHtml,elapsedMs:Date.now()-startedAt
+  });
+
+  if(!response.ok)throw new Error(`Apps Script respondio HTTP ${response.status}.`);
+  if(isHtml)throw new Error("Apps Script devolvio HTML en lugar de JSON. Verifica el deployment configurado.");
+  let json;
+  try{json=JSON.parse(text);}catch(_){throw new Error("Apps Script devolvio una respuesta que no es JSON valido.");}
+  return json;
+}
+
 export async function runWithConcurrency_(items,limit,worker){
   const results=new Array(items.length);
   let cursor=0;
