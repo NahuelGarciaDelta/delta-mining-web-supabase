@@ -89,6 +89,11 @@ async function fetchSpecialAction_(action,params={}){
 
 function fullOperationalWindowParams_(params={}){
   const days=Math.max(1,Number(params.days)||7);
+  const hasExplicitRange=Boolean(params.desde||params.hasta);
+  if(days>=45&&!hasExplicitRange){
+    const {days:_days,snapshot:_snapshot,...rest}=params;
+    return{...rest,limit:"all",sortBy:"fecha",sortDirection:"asc"};
+  }
   const endIso=String(params.hasta||"").slice(0,10);
   const end=endIso?new Date(`${endIso}T12:00:00`):new Date();
   const start=new Date(end);
@@ -109,9 +114,9 @@ export const getRop02MonthlySummary=params=>ROP02_SOURCE==="legacy"?fetchSpecial
 export const getRop02OperationalSnapshot=params=>{
   const p=params||{};
   // Los snapshots compactos sirven para vistas de estado actual (7 días).
-  // Ventanas analíticas más largas, como Vehículos (45 días), necesitan todos
-  // los partes ROP02 del período para no perder registros ni reemplazar el
-  // proyecto/lugar histórico cargado en cada parte.
+  // Ventanas analíticas más largas, como Vehículos, necesitan todos los
+  // partes ROP02 correspondientes. Sin fechas explícitas, Vehículos replica
+  // el comportamiento histórico de la app original y consulta todo ROP02.
   if((Number(p.days)||7)>7)return getRop02(fullOperationalWindowParams_(p));
   return ROP02_SOURCE==="legacy"
     ?getRop02({...p,limit:"all"})
