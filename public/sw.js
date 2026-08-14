@@ -1,4 +1,4 @@
-const CACHE_NAME = "delta-mining-ops-v13-offline-cache-v390";
+const CACHE_NAME = "delta-mining-ops-v14-offline-cache-v391";
 const APP_SHELL = [
   "/",
   "/index.html",
@@ -16,7 +16,6 @@ async function safePut(cache, request, response) {
     if (response.type !== "basic" && response.type !== "default") return;
     await cache.put(request, response.clone());
   } catch (error) {
-    // El cache nunca debe romper la navegación ni generar una promesa no manejada.
     console.debug("[SW] cache omitido", error?.message || error);
   }
 }
@@ -41,14 +40,12 @@ self.addEventListener("fetch", (event) => {
   const request = event.request;
   if (request.method !== "GET") return;
   const url = new URL(request.url);
-
-  // Apps Script y APIs externas: siempre red. Los datos persistidos los maneja IndexedDB/localStorage.
   if (url.origin !== self.location.origin) return;
 
   if (request.mode === "navigate") {
     event.respondWith((async () => {
       try {
-        const response = await fetch(request);
+        const response = await fetch(request, { cache: "no-store" });
         const cache = await caches.open(CACHE_NAME);
         await safePut(cache, "/index.html", response);
         return response;
@@ -59,7 +56,23 @@ self.addEventListener("fetch", (event) => {
     return;
   }
 
-  // JS/CSS/imágenes: stale-while-revalidate. Respuesta inmediata desde caché y actualización silenciosa.
+  const isCode = request.destination === "script" || request.destination === "style" || url.pathname.startsWith("/src/") || url.pathname.includes("/@vite/");
+  if (isCode) {
+    // Código siempre network-first: evita mezclar módulos de builds distintos.
+    event.respondWith((async () => {
+      const cache = await caches.open(CACHE_NAME);
+      try {
+        const response = await fetch(request, { cache: "no-store" });
+        await safePut(cache, request, response);
+        return response;
+      } catch (_) {
+        return (await cache.match(request)) || Response.error();
+      }
+    })());
+    return;
+  }
+
+  // Recursos estáticos pesados: stale-while-revalidate para conservar modo offline.
   event.respondWith((async () => {
     const cache = await caches.open(CACHE_NAME);
     const cached = await cache.match(request);
