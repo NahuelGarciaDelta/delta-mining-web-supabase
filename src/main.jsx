@@ -10,8 +10,23 @@ createRoot(document.getElementById("root")).render(
 
 
 // Registro PWA e instalación en el escritorio.
+// En desarrollo el Service Worker puede servir módulos /src obsoletos y provocar
+// errores de imports/HMR. Por eso se desactiva y se limpian sus cachés locales.
 if ("serviceWorker" in navigator) {
-  window.addEventListener("load", () => {
+  window.addEventListener("load", async () => {
+    if (import.meta.env.DEV) {
+      try {
+        const registrations = await navigator.serviceWorker.getRegistrations();
+        await Promise.all(registrations.map((registration) => registration.unregister()));
+        if ("caches" in window) {
+          const keys = await caches.keys();
+          await Promise.all(keys.filter((key) => key.startsWith("delta-mining-ops-")).map((key) => caches.delete(key)));
+        }
+      } catch (error) {
+        console.debug("No se pudo limpiar el Service Worker de desarrollo:", error);
+      }
+      return;
+    }
     navigator.serviceWorker.register("/sw.js").catch((error) => {
       console.error("No se pudo registrar el Service Worker:", error);
     });
