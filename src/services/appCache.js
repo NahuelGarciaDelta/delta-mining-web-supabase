@@ -46,7 +46,7 @@ function normalizeRecord_(record){
   if(!record)return null;
   const data=record.data??record.value;
   if(!data)return null;
-  return {...record,data,value:undefined,version:Number(record.version||data?.meta?.serverVersion||0)};
+  return {...record,data,value:data,version:Number(record.version||data?.meta?.serverVersion||0)};
 }
 export async function readCachedSourceRecords(keys){
   const wanted=[...new Set((keys||[]).filter(Boolean))];

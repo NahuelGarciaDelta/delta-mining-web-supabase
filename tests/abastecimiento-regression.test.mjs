@@ -12,9 +12,11 @@ test("Abastecimiento importa y registra registerRefreshTask en el scope del mód
   assert.match(moduleSource, /registerRefreshTask\(["']abastecimiento["']/);
 });
 
-test("Abastecimiento espera remitos reales antes de calcular RABA03 al abrir", () => {
-  assert.match(moduleSource, /sharedRemitos=await loadRemitosCompartidos\(\{silent:true\}\)/);
-  assert.match(moduleSource, /loadRaba03\(\{silent:false,remitosOverride:sharedRemitos\}\)/);
+test("Abastecimiento usa cache inmediato y revalida remitos/estados sin bloquear", () => {
+  assert.match(moduleSource, /readCachedSource\(RABA03_DATA_CACHE_KEY\)/);
+  assert.match(moduleSource, /Promise\.allSettled\(\[/);
+  assert.match(moduleSource, /loadRaba03\(\{silent:hasCachedRows,remitosOverride:sharedRemitos\}\)/);
+  assert.match(moduleSource, /fetchAbastecimiento/);
   assert.match(moduleSource, /const sentMap=Array\.isArray\(remitosOverride\)\?buildSentByCode\(remitosOverride\):sentByCodeRef\.current/);
 });
 

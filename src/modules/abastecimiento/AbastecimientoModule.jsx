@@ -2,6 +2,7 @@ import React, { useState, useCallback, useMemo, useEffect, useRef, startTransiti
 import ReactDOM from "react-dom";
 import { clearSharedStock, uploadStockExcel } from "../../services/stockService.js";
 import { registerRefreshTask } from "../../services/refreshManager.js";
+import { readCachedSource, writeCachedSource } from "../../services/appCache.js";
 import { useSharedStock } from "./stock/useSharedStock.js";
 import { stockValidationSummary, validateStockWorkbook } from "./stock/stockValidation.js";
 import {useProgressiveRows} from "../../hooks/useProgressiveRows.js";
@@ -34,6 +35,21 @@ const RABA03_EXTRA_COLUMNS = [
 const RABA08_STORAGE_KEY = "dm_raba08_remitos_v1";
 const RABA03_REJECTED_STORAGE_KEY = "dm_raba03_solicitudes_rechazadas_v1";
 const RABA03_CLOSED_STORAGE_KEY = "dm_raba03_solicitudes_cerradas_manual_v1";
+const RABA03_DATA_CACHE_KEY = "abastecimiento_raba03_rows_v1";
+const ABASTECIMIENTO_FETCH_TIMEOUT_MS = 15000;
+
+async function fetchAbastecimiento(url,options={}){
+  const controller=new AbortController();
+  const timer=window.setTimeout(()=>controller.abort(),ABASTECIMIENTO_FETCH_TIMEOUT_MS);
+  try{
+    return await fetch(url,{...options,signal:controller.signal});
+  }catch(error){
+    if(error?.name==="AbortError")throw new Error("La consulta de Abastecimiento superó 15 segundos. Se muestran los últimos datos guardados.");
+    throw error;
+  }finally{
+    window.clearTimeout(timer);
+  }
+}
 const STOCK_CONTROL_COLUMNS = [
   {key:"codigoArticulo", label:"Cód. artículo", width:112},
   {key:"descripcion", label:"Descripción", width:245},
@@ -367,7 +383,7 @@ export function AbastecimientoModule({initialTab="solicitudes",readOnly=false,as
 
   const loadEstadosSolicitudesCompartidos=useCallback(async({silent=true}={})=>{
     try{
-      const res=await fetch(`${APPS_SCRIPT_URL}?action=estados_solicitudes&force=1&_=${Date.now()}`,{cache:"no-store",redirect:"follow"});
+      const res=await fetchAbastecimiento(`${APPS_SCRIPT_URL}?action=estados_solicitudes&force=1&_=${Date.now()}`,{cache:"no-store",redirect:"follow"});
       if(!res.ok)throw new Error(`Error HTTP ${res.status}`);
       const json=await res.json();
       if(!json.ok)throw new Error(json?.error?.message||"No se pudieron leer los estados compartidos.");
@@ -418,7 +434,7 @@ export function AbastecimientoModule({initialTab="solicitudes",readOnly=false,as
   const loadRemitosCompartidos=useCallback(async({silent=true}={})=>{
     try{
       const url=`${APPS_SCRIPT_URL}?action=remitos_cargados&limit=all&force=1&_=${Date.now()}`;
-      const res=await fetch(url,{method:"GET",cache:"no-store",redirect:"follow"});
+      const res=await fetchAbastecimiento(url,{method:"GET",cache:"no-store",redirect:"follow"});
       if(!res.ok)throw new Error(`Error HTTP ${res.status}`);
       const json=await res.json();
       if(!json.ok)throw new Error(json?.error?.message||"No se pudieron leer los remitos cargados.");
@@ -797,13 +813,16 @@ export function AbastecimientoModule({initialTab="solicitudes",readOnly=false,as
     }
     try{
       const url=`${APPS_SCRIPT_URL}?action=raba03&limit=all&_=${Date.now()}`;
-      const res=await fetch(url,{cache:"no-store"});
+      const res=await fetchAbastecimiento(url,{cache:"no-store"});
+      if(!res.ok)throw new Error(`Error HTTP ${res.status}`);
       const json=await res.json();
       if(!json.ok)throw new Error(json?.error?.message||"No se pudo leer RABA03");
       const raw=Array.isArray(json.data)?json.data:(Array.isArray(json?.sources?.raba03?.data)?json.sources.raba03.data:[]);
       rawRaba03RowsRef.current=raw;
       const sentMap=Array.isArray(remitosOverride)?buildSentByCode(remitosOverride):sentByCodeRef.current;
-      setRows(mapRaba03Rows(raw,sentMap));
+      const normalizedRows=mapRaba03Rows(raw,sentMap);
+      setRows(normalizedRows);
+      writeCachedSource(RABA03_DATA_CACHE_KEY,{ok:true,data:normalizedRows,meta:{updatedAt:new Date().toISOString(),rows:normalizedRows.length}}).catch(()=>{});
     }catch(err){
       if(!silent){
         setError(err.message||String(err));
@@ -816,21 +835,37 @@ export function AbastecimientoModule({initialTab="solicitudes",readOnly=false,as
     }
   },[mapRaba03Rows,buildSentByCode]);
 
-  // Carga inicial coordinada: primero se esperan los remitos y estados reales;
-  // recién entonces se normaliza RABA03 con esas cantidades. Pasar los remitos
-  // como argumento evita depender de que React haya completado setRemitos.
+  // Carga inicial stale-while-revalidate: primero pinta la última copia local
+  // y luego sincroniza remitos/estados en paralelo. Nunca queda esperando una
+  // solicitud de red de forma indefinida.
   useEffect(()=>{
     if(raba03InitialLoadDoneRef.current)return;
     raba03InitialLoadDoneRef.current=true;
     let cancelled=false;
     const run=async()=>{
-      let sharedRemitos=null;
-      try{sharedRemitos=await loadRemitosCompartidos({silent:true});}catch(_){}
-      try{await loadEstadosSolicitudesCompartidos({silent:true});}catch(_){}
+      let hasCachedRows=false;
+      try{
+        const cached=await readCachedSource(RABA03_DATA_CACHE_KEY);
+        const cachedRows=cached?.value?.ok&&Array.isArray(cached.value.data)?cached.value.data:[];
+        if(cachedRows.length&&!cancelled){
+          hasCachedRows=true;
+          setRows(cachedRows);
+          setLoading(false);
+        }
+      }catch(_){}
+
+      const [remitosResult]=await Promise.allSettled([
+        loadRemitosCompartidos({silent:true}),
+        loadEstadosSolicitudesCompartidos({silent:true})
+      ]);
       if(cancelled)return;
-      await loadRaba03({silent:false,remitosOverride:sharedRemitos});
+      const sharedRemitos=remitosResult.status==="fulfilled"?remitosResult.value:null;
+      await loadRaba03({silent:hasCachedRows,remitosOverride:sharedRemitos});
+      if(!hasCachedRows)setLoading(false);
     };
-    run();
+    run().catch(err=>{
+      if(!cancelled){setError(err?.message||String(err));setLoading(false);}
+    });
     return()=>{cancelled=true;};
   },[loadRaba03,loadRemitosCompartidos,loadEstadosSolicitudesCompartidos]);
 

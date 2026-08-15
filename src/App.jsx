@@ -9,7 +9,7 @@ import UserSettingsModal from "./components/UserSettingsModal.jsx";
 import GlobalSearch from "./components/GlobalSearch.jsx";
 import { APPS_SCRIPT_URL } from "./config/app.js";
 import { VIEW_SOURCES } from "./config/viewSources.js";
-import { fetchAction, fetchHealth, fetchSource, fetchSyncVersions, runWithConcurrency_ } from "./services/appsScriptApi.js";
+import { fetchAction, fetchHealth, fetchSource, runWithConcurrency_ } from "./services/appsScriptApi.js";
 import { clearAuthenticatedSession, getAuthenticatedUser } from "./services/authSession.js";
 import { appAlert, appConfirm } from "./services/dialogService.js";
 import { APP_FILTERS_STATE_KEY, readSavedAppFilters, readSavedDataSources, saveDataSourcesToStorage, getCachedSourceTimestamp, mergeIncrementalSource, readCachedSourceRecords, readCachedSource, writeCachedSource } from "./services/appCache.js";
@@ -162,6 +162,10 @@ import { ABASTECIMIENTO_DEPS, COSTOS_UNITARIOS_DEPS, INFORME_COSTOS_DEPS, LICITA
 const ALL_APP_PRELOAD_SOURCES=Object.freeze(
   Array.from(new Set(Object.values(VIEW_SOURCES).flat()))
 );
+const SUPABASE_OPERATIONAL_KEYS=Object.freeze(new Set([
+  "rop02_fs","rop02_jm","rop02_filosur","rop02_zorro",
+  "rop05","rma15_fs","rma15_jm","lista_equipos","insumos"
+]));
 
 export default function App(){
   useGlobalThreeStateTableSort();
@@ -496,8 +500,7 @@ export default function App(){
         return {key,value:localSource,skipped:true};
       }
 
-      const typedKeys=new Set(["rop05","rma15_fs","rma15_jm","lista_equipos","insumos"]);
-      const fetched=typedKeys.has(key)
+      const fetched=SUPABASE_OPERATIONAL_KEYS.has(key)
         ?await getOperationalSource(key)
         :await fetchSource(APPS_SCRIPT_URL,key,{force,since:force?'':getCachedSourceTimestamp(cacheRecord)});
       if(!fetched?.ok||!Array.isArray(fetched.data))throw new Error(fetched?.error?.message||'Respuesta sin datos válidos');
@@ -533,8 +536,10 @@ export default function App(){
     if(background||hasVisible)beginBackgroundSync();else setLoading(true);
 
     try{
-      const syncInfo=force?null:await fetchSyncVersions(APPS_SCRIPT_URL);
-      const serverVersions=syncInfo?.versions||{};
+      // Las fuentes operativas de esta app se leen directo de Supabase. Solo
+      // una fuente futura/legacy necesita versionado de Apps Script; no bloqueamos
+      // las pestañas actuales con ese round-trip.
+      const serverVersions={};
       const results=await Promise.allSettled(toCheck.map(key=>fetchOneSource(key,{force,serverVersions,cacheRecords})));
       const entries=[];
       const softErrors=[];
@@ -587,6 +592,13 @@ export default function App(){
     }
   },[hydrateSourcesFromCache,fetchOneSource,beginBackgroundSync,endBackgroundSync]);
 
+  // Restauración inmediata desde IndexedDB: las pestañas pueden renderizar
+  // con la última copia válida antes de iniciar cualquier consulta de red.
+  useEffect(()=>{
+    if(!auth)return;
+    hydrateSourcesFromCache(ALL_APP_PRELOAD_SOURCES).catch(()=>{});
+  },[auth,hydrateSourcesFromCache]);
+
   // ─── Precarga global ─────────────────────────────────────────────────────
   // Al autenticarse, llena en segundo plano el cache de TODAS las fuentes comunes.
   // No bloquea Bienvenida ni muestra loaders. Las vistas posteriores reutilizan
@@ -614,11 +626,9 @@ export default function App(){
       try{await preloadHistoricalDatasets();}catch(_){}
     };
 
-    if(typeof window.requestIdleCallback==="function"){
-      idleId=window.requestIdleCallback(run,{timeout:1500});
-    }else{
-      timeoutId=window.setTimeout(run,350);
-    }
+    // El cache local ya fue hidratado arriba. La revalidación arranca pronto y
+    // siempre en segundo plano para que el usuario no llegue antes que el prefetch.
+    timeoutId=window.setTimeout(run,80);
 
     return()=>{
       cancelled=true;
@@ -653,16 +663,9 @@ export default function App(){
 
   useEffect(()=>{
     if(view==="dashboard"&&Object.keys(rawSourcesRef.current||{}).length===0){loadInitial();return;}
-    let cancelled=false;
-    const run=()=>{if(!cancelled)loadSources(VIEW_SOURCES[view]||[],{background:true});};
-    const id=typeof window.requestIdleCallback==="function"
-      ?window.requestIdleCallback(run,{timeout:250})
-      :window.setTimeout(run,60);
-    return()=>{
-      cancelled=true;
-      if(typeof window.cancelIdleCallback==="function")window.cancelIdleCallback(id);
-      else window.clearTimeout(id);
-    };
+    // La vista activa tiene prioridad: primero usa IndexedDB y revalida Supabase
+    // inmediatamente en background, sin esperar a que el navegador quede idle.
+    loadSources(VIEW_SOURCES[view]||[],{background:true}).catch(()=>{});
   },[view,loadSources,loadInitial]);
 
   // ─── Auto-refresh global: recarga la vista activa cada 5 minutos ─────────────
