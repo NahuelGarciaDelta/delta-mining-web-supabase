@@ -5870,7 +5870,7 @@ function remoteTableParams(state={}){
   };
 }
 
-const SECONDARY_ROP02_VIEWS=new Set(["listaEquipos","tallerCentral","horometros","vehiculos","controlROP02","controlErrores","ctrlEquipo","combustible","chc","control"]);
+const SECONDARY_ROP02_VIEWS=new Set();
 const ymdLocal=d=>`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}-${String(d.getDate()).padStart(2,"0")}`;
 function secondaryRop02Params(view,state={}){
   if(["listaEquipos","tallerCentral","horometros","vehiculos"].includes(view)&&!state.fecha&&!state.fechaD&&!state.fechaH)return{snapshot:true,days:view==="vehiculos"?45:7};

@@ -254,11 +254,11 @@ export default function App(){
 
   const viewDataReady=useMemo(()=>{
     if(view==="rop05"||view==="rop05Discriminacion")return sourceHasData("rop05");
-    if(view==="rop02")return true;
+    if(view==="rop02")return sourceHasData("rop02_jm")||sourceHasData("rop02_fs")||sourceHasData("rop02_filosur")||sourceHasData("rop02_zorro");
     if(view==="rma15")return sourceHasData("rma15_jm")||sourceHasData("rma15_fs");
     if(view==="insumos")return sourceHasData("insumos")||sourceHasData("rma15_jm")||sourceHasData("rma15_fs");
     if(view==="listaEquipos")return sourceHasData("lista_equipos");
-    if(view==="control")return sourceHasData("rop05");
+    if(view==="control")return sourceHasData("rop05")&&(sourceHasData("rop02_jm")||sourceHasData("rop02_fs")||sourceHasData("rop02_filosur")||sourceHasData("rop02_zorro"));
     return Object.keys(rawSources||{}).some(sourceHasData);
   },[view,sourceHasData,rawSources]);
 
@@ -354,6 +354,23 @@ export default function App(){
       setRop05(rop05Raw.filter(r=>dmProjectMatches(r.proyecto,proyectoUsuario)).map(r=>({...r,maquina:resolveEquipmentCodeAlias(r.maquina),tarea:normTarea(r.tarea)})));
     }else if(src.rop05){
       setRop05([]);
+    }
+
+    const rFS=src.rop02_fs?.ok&&src.rop02_fs.data?normalizeROP02(src.rop02_fs.data,"FILO DEL SOL"):[];
+    const rJM=src.rop02_jm?.ok&&src.rop02_jm.data?normalizeROP02(src.rop02_jm.data,"JOSE MARIA"):[];
+    const rFSur=src.rop02_filosur?.ok&&src.rop02_filosur.data?normalizeROP02(src.rop02_filosur.data,"FILO SUR"):[];
+    const rZorro=src.rop02_zorro?.ok&&src.rop02_zorro.data?normalizeROP02(src.rop02_zorro.data,"EL ZORRO"):[];
+    if(src.rop02_fs&&!src.rop02_fs.ok)errs.push({source:"ROP02 — Filo del Sol",...src.rop02_fs.error});
+    if(src.rop02_jm&&!src.rop02_jm.ok)errs.push({source:"ROP02 — José María",...src.rop02_jm.error});
+    if(src.rop02_filosur&&!src.rop02_filosur.ok)errs.push({source:"ROP02 — Filo Sur",...src.rop02_filosur.error});
+    if(src.rop02_zorro&&!src.rop02_zorro.ok)errs.push({source:"ROP02 — El Zorro",...src.rop02_zorro.error});
+    const allRop02=[...rFS,...rJM,...rFSur,...rZorro];
+    if(allRop02.length || src.rop02_fs || src.rop02_jm || src.rop02_filosur || src.rop02_zorro){
+      const allNames=[...allRop02.map(r=>r.supervisor),...allRop02.map(r=>r.operario),...rop05Raw.map(r=>r.supervisor)].filter(Boolean);
+      buildCanonicalMap(allNames);
+      const normalizedRop02=allRop02.map(r=>({...r,maquina:resolveEquipmentCodeAlias(r.maquina),supervisor:normName(r.supervisor),operario:normName(r.operario)}));
+      setRop02ControlAll(normalizedRop02);
+      setRop02All(normalizedRop02.filter(r=>dmProjectMatches(r.proyecto,proyectoUsuario)));
     }
 
     const insumosMap={};

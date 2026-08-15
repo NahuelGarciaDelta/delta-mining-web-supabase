@@ -125,7 +125,7 @@ export const getRop02OperationalSnapshot=params=>{
   // Ventanas analíticas más largas, como Vehículos, necesitan todos los
   // partes ROP02 correspondientes. Sin fechas explícitas, Vehículos replica
   // el comportamiento histórico de la app original y consulta todo ROP02.
-  if((Number(p.days)||7)>7)return fetchDatasetPage("rop02",fullOperationalWindowParams_(p));
+  if(p.snapshot||(Number(p.days)||7)>7)return fetchDatasetPage("rop02",fullOperationalWindowParams_(p));
   return ROP02_SOURCE==="legacy"
     ?getRop02({...p,limit:"all"})
     :getSupabaseOperationalSnapshot(p).catch(error=>{console.warn("[ROP02] fallback operational snapshot legacy",error);return getRop02({...p,limit:"all"});});
