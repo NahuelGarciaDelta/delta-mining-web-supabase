@@ -1,0 +1,122 @@
+name: Restore original data infrastructure
+
+on:
+  push:
+    paths:
+      - '.github/workflows/restore-original-data-infrastructure.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  restore:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 0
+
+      - name: Restore original ROP02 data flow
+        shell: bash
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          import re
+
+          # App.jsx: volver al flujo del original: las cuatro ROP02 forman rop02All
+          # y alimentan Bienvenida, Dashboard, Vehículos, controles, PM, etc.
+          p = Path('src/App.jsx')
+          s = p.read_text(encoding='utf-8')
+          s = s.replace(
+              'if(view==="rop02")return true;',
+              'if(view==="rop02")return sourceHasData("rop02_jm")||sourceHasData("rop02_fs")||sourceHasData("rop02_filosur")||sourceHasData("rop02_zorro");'
+          )
+          s = s.replace(
+              'if(view==="control")return sourceHasData("rop05");',
+              'if(view==="control")return sourceHasData("rop05")&&(sourceHasData("rop02_jm")||sourceHasData("rop02_fs")||sourceHasData("rop02_filosur")||sourceHasData("rop02_zorro"));'
+          )
+
+          if 'const rFS=src.rop02_fs?.ok&&src.rop02_fs.data?normalizeROP02' not in s:
+              marker = '    const insumosMap={};'
+              block = '''    const rFS=src.rop02_fs?.ok&&src.rop02_fs.data?normalizeROP02(src.rop02_fs.data,"FILO DEL SOL"):[];
+    const rJM=src.rop02_jm?.ok&&src.rop02_jm.data?normalizeROP02(src.rop02_jm.data,"JOSE MARIA"):[];
+    const rFSur=src.rop02_filosur?.ok&&src.rop02_filosur.data?normalizeROP02(src.rop02_filosur.data,"FILO SUR"):[];
+    const rZorro=src.rop02_zorro?.ok&&src.rop02_zorro.data?normalizeROP02(src.rop02_zorro.data,"EL ZORRO"):[];
+    if(src.rop02_fs&&!src.rop02_fs.ok)errs.push({source:"ROP02 — Filo del Sol",...src.rop02_fs.error});
+    if(src.rop02_jm&&!src.rop02_jm.ok)errs.push({source:"ROP02 — José María",...src.rop02_jm.error});
+    if(src.rop02_filosur&&!src.rop02_filosur.ok)errs.push({source:"ROP02 — Filo Sur",...src.rop02_filosur.error});
+    if(src.rop02_zorro&&!src.rop02_zorro.ok)errs.push({source:"ROP02 — El Zorro",...src.rop02_zorro.error});
+
+    const allRop02=[...rFS,...rJM,...rFSur,...rZorro];
+    if(allRop02.length || src.rop02_fs || src.rop02_jm || src.rop02_filosur || src.rop02_zorro){
+      const allNames=[...allRop02.map(r=>r.supervisor),...allRop02.map(r=>r.operario),...rop05Raw.map(r=>r.supervisor)].filter(Boolean);
+      buildCanonicalMap(allNames);
+      const normalizedRop02=allRop02.map(r=>({...r,maquina:resolveEquipmentCodeAlias(r.maquina),supervisor:normName(r.supervisor),operario:normName(r.operario)}));
+      setRop02ControlAll(normalizedRop02);
+      setRop02All(normalizedRop02.filter(r=>dmProjectMatches(r.proyecto,proyectoUsuario)));
+    }
+
+'''
+              if marker not in s:
+                  raise SystemExit('No se encontró punto de inserción ROP02 en App.jsx')
+              s = s.replace(marker, block + marker, 1)
+          p.write_text(s, encoding='utf-8')
+
+          # Oficina Técnica: eliminar la capa de subconjuntos introducida en Supabase.
+          # Las vistas y sus filtros vuelven a trabajar sobre rop02All, como el original.
+          p = Path('src/modules/oficina-tecnica/OficinaTecnicaModule.jsx')
+          s = p.read_text(encoding='utf-8')
+          s, n = re.subn(
+              r'const SECONDARY_ROP02_VIEWS=new Set\(\[[^\n]*\]\);',
+              'const SECONDARY_ROP02_VIEWS=new Set();',
+              s,
+              count=1
+          )
+          if n != 1:
+              raise SystemExit('No se pudo desactivar SECONDARY_ROP02_VIEWS')
+          p.write_text(s, encoding='utf-8')
+
+          # Control ROP02 vs ROP05: los registros previos a julio no son válidos
+          # para este control y no deben alimentar el badge rojo.
+          p = Path('src/shared/domain/index.jsx')
+          s = p.read_text(encoding='utf-8')
+          if 'const FECHA_CORTE_CONTROL="2026-06-01";' in s:
+              s = s.replace('const FECHA_CORTE_CONTROL="2026-06-01";', 'const FECHA_CORTE_CONTROL="2026-07-01";', 1)
+          elif 'const FECHA_CORTE_CONTROL="2026-07-01";' not in s:
+              raise SystemExit('No se encontró FECHA_CORTE_CONTROL')
+          p.write_text(s, encoding='utf-8')
+
+          # Defensa adicional: una consulta marcada como snapshot por Oficina Técnica
+          # debe usar el histórico completo; los snapshots operativos reales no llevan
+          # esa marca y conservan su ventana de 7 días.
+          p = Path('src/data/historicalDataService.js')
+          s = p.read_text(encoding='utf-8')
+          s = s.replace(
+              'if((Number(p.days)||7)>7)return fetchDatasetPage("rop02",fullOperationalWindowParams_(p));',
+              'if(p.snapshot||(Number(p.days)||7)>7)return fetchDatasetPage("rop02",fullOperationalWindowParams_(p));'
+          )
+          p.write_text(s, encoding='utf-8')
+
+          # El workflow es de una sola ejecución.
+          Path('.github/workflows/restore-original-data-infrastructure.yml').unlink(missing_ok=True)
+          PY
+
+      - name: Validate source changes
+        run: |
+          npm ci
+          npm run check
+          npm run validate
+          npm run build
+
+      - name: Commit restored infrastructure
+        run: |
+          git config user.name "Delta Mining Migration Bot"
+          git config user.email "actions@users.noreply.github.com"
+          git add -A
+          if git diff --cached --quiet; then
+            echo "No changes to commit"
+            exit 0
+          fi
+          git commit -m "Restaurar infraestructura ROP02 original sobre Supabase"
+          git push origin HEAD:main
