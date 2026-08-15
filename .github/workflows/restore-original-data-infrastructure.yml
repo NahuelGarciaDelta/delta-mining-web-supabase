@@ -1,4 +1,5 @@
 name: Restore original data infrastructure
+# validation retry after aligning regression tests
 
 on:
   push:
