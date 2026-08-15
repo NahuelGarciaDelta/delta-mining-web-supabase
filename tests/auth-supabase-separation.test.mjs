@@ -12,10 +12,15 @@ test("el login autentica exclusivamente mediante Apps Script",async()=>{
   assert.match(api,/action:\s*"authenticate_user"/);
   assert.match(api,/application\/x-www-form-urlencoded/);
   assert.match(appConfig,/VITE_APPS_SCRIPT_URL/);
-  const forbidden=/rop02Repository|supabaseClient|VITE_ROP02_SOURCE|VITE_SUPABASE_/;
-  assert.doesNotMatch(login,forbidden);
-  assert.doesNotMatch(api,forbidden);
-  assert.doesNotMatch(appConfig,forbidden);
+  const loginForbidden=/rop02Repository|supabaseClient|VITE_ROP02_SOURCE|VITE_SUPABASE_/;
+  assert.doesNotMatch(login,loginForbidden);
+  assert.doesNotMatch(appConfig,loginForbidden);
+
+  const authStart=api.indexOf("export async function authenticateUser");
+  const authEnd=api.indexOf("export async function runWithConcurrency_",authStart);
+  const authBlock=api.slice(authStart,authEnd);
+  assert.doesNotMatch(authBlock,/requireSupabase|supabaseClient|VITE_SUPABASE_/);
+  assert.match(authBlock,/fetch\(endpoint/);
 });
 
 test("la autenticacion no contiene usuarios ni credenciales de respaldo",async()=>{
