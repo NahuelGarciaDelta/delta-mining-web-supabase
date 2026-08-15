@@ -1154,7 +1154,7 @@ function calcControl(rop02All,rop05){
   const faltanEn02=prod05.filter(r=>!set02.has(key(r)));
   const total=productivos.length+prod05.length;
   const problemas=faltanEn05.length+faltanEn02.length;
-  const FECHA_CORTE_CONTROL_ROP="2026-06-01"; // después del 31/05
+  const FECHA_CORTE_CONTROL_ROP="2026-07-01"; // los registros previos a julio no participan del control operativo
   const problemasPost31=faltanEn05.filter(r=>r.fecha>=FECHA_CORTE_CONTROL_ROP).length+faltanEn02.filter(r=>r.fecha>=FECHA_CORTE_CONTROL_ROP).length;
   const consistencia=total>0?Math.round(((total-problemas)/total)*100):100;
   return{faltanEn05,faltanEn02,consistencia,total,problemas,problemasPost31,productivos,prod05};
