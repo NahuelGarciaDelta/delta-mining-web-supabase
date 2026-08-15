@@ -1,4 +1,10 @@
 import {isSupabaseConfigured,requireSupabase} from "./supabaseClient.js";
+import {getOperationalSource} from "../data/operationalRepository.js";
+
+const TYPED_SUPABASE_SOURCES=new Set([
+  "rop02_fs","rop02_jm","rop02_filosur","rop02_zorro",
+  "rop05","rma15_fs","rma15_jm","lista_equipos","insumos"
+]);
 
 const GENERIC_SUPABASE_SOURCES=new Set([
   "raba03","remitos_cargados","licitaciones_db","licitacion_hitos_db","licitacion_equipos_db",
@@ -200,6 +206,10 @@ export async function fetchAction(url,action,options={}){
 export async function fetchHealth(url){return fetchAppsScriptAction_(url,"health",{compact:false});}
 
 export async function fetchSource(url,source,{force=false,since=""}={}){
+  if(TYPED_SUPABASE_SOURCES.has(source)&&isSupabaseConfigured){
+    try{return await getOperationalSource(source);}
+    catch(error){console.warn(`[${source}] Supabase tipado no disponible; fallback Apps Script`,error);}
+  }
   if(GENERIC_SUPABASE_SOURCES.has(source)){
     try{
       const value=await readGenericSourceFromSupabase_(source);
