@@ -12,6 +12,31 @@ function applyCommon(query,p,dateColumn){
   return query;
 }
 
+function rop02Legacy(row={}){
+  return{
+    Fecha:row.fecha,
+    Interno:row.interno,
+    Equipo:row.equipo,
+    Operador:row.operador,
+    "Supervisor Delta":row.supervisor_delta,
+    "Supervisor Vial Cliente":row.supervisor_vial_cliente,
+    "Turno de trabajo":row.turno_trabajo,
+    "N° Parte":row.numero_parte,
+    Proyecto:row.proyecto,
+    "Horómetro inicial":row.horometro_inicial,
+    "Horómetro final":row.horometro_final,
+    "Cant. Hs.":row.cantidad_horas,
+    Combustible:row.combustible,
+    Aceite:row.aceite,
+    "Descripción de los trabajos realizados":row.descripcion_trabajos,
+    "Información sobre Desgaste":row.informacion_desgaste,
+    Observaciones:row.observaciones,
+    _sourceDataset:row.source_dataset,
+    _sourceRow:row.source_row,
+    _sourceKey:row.source_key,
+  };
+}
+
 function rop05Legacy(row={}){
   return {...(row.raw_data||{}),
     "Fecha del Parte Diario":row.fecha,Fecha:row.fecha,Supervisor:row.supervisor,Proyecto:row.proyecto,
@@ -64,7 +89,26 @@ async function allOrPage(getter,params){
 export const getRop05Page=(params={})=>allOrPage(getRop05Chunk,params);
 export const getRma15Page=(params={})=>allOrPage(getRma15Chunk,params);
 
+async function getRop02Source_(sourceDataset){
+  const all=[];
+  for(let offset=0;;offset+=1000){
+    const {data,error}=await requireSupabase().from("rop02")
+      .select("source_dataset,source_row,fecha,interno,equipo,operador,supervisor_delta,supervisor_vial_cliente,turno_trabajo,numero_parte,proyecto,horometro_inicial,horometro_final,cantidad_horas,combustible,aceite,descripcion_trabajos,informacion_desgaste,observaciones,source_key,synced_at")
+      .eq("source_dataset",sourceDataset)
+      .not("source_row","is",null)
+      .order("source_row",{ascending:true})
+      .range(offset,offset+999);
+    if(error)throw new Error(`Supabase ${sourceDataset}: ${error.message}`);
+    all.push(...(data||[]));
+    if((data||[]).length<1000)break;
+  }
+  const rows=all.map(rop02Legacy);
+  const latest=all.reduce((max,row)=>Math.max(max,new Date(row.synced_at||0).getTime()||0),0);
+  return{ok:true,data:rows,meta:{source:sourceDataset,rows:rows.length,returnedRows:rows.length,hasMore:false,serverVersion:latest||Date.now()},source:"supabase"};
+}
+
 export const getOperationalSource=async key=>{
+  if(["rop02_fs","rop02_jm","rop02_filosur","rop02_zorro"].includes(key))return getRop02Source_(key);
   const config={rop05:["rop05",rop05Legacy],rma15_fs:["rma15_frontend",rma15Legacy],rma15_jm:["rma15_frontend",rma15Legacy],lista_equipos:["lista_equipos",rawLegacy],insumos:["insumos",rawLegacy]}[key];
   if(!config)throw new Error(`Fuente tipada no soportada: ${key}`);
   const [tableName,adapt]=config,all=[];
@@ -74,8 +118,7 @@ export const getOperationalSource=async key=>{
     query=query.order("source_row").range(offset,offset+999);const {data,error}=await query;if(error)throw new Error(`Supabase ${tableName}: ${error.message}`);
     all.push(...(data||[]));if((data||[]).length<1000)break;
   }
-  const latestSync=all.reduce((max,row)=>{const value=new Date(row?.synced_at||0).getTime();return Number.isFinite(value)?Math.max(max,value):max;},0);
-  const rows=all.map(adapt);return{ok:true,data:rows,meta:{source:key,rows:rows.length,returnedRows:rows.length,hasMore:false,serverVersion:latestSync||Date.now(),serverTime:new Date(latestSync||Date.now()).toISOString()},source:"supabase"};
+  const rows=all.map(adapt);return{ok:true,data:rows,meta:{source:key,rows:rows.length,returnedRows:rows.length,hasMore:false,serverVersion:Date.now()},source:"supabase"};
 };
 
 export async function fetchAllOperationalPages(dataset,params={},onPage=()=>{}){
