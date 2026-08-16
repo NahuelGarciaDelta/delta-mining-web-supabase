@@ -4,6 +4,7 @@ let snapshotPromise=null;
 let snapshotCache=null;
 let snapshotAt=0;
 const SNAPSHOT_TTL_MS=5000;
+const actor=()=>String(sessionStorage.getItem("dm_user")||"APP").trim().toLowerCase()||"APP";
 
 export async function getAbastecimientoSnapshot({force=false}={}){
   const now=Date.now();
@@ -17,8 +18,7 @@ export async function getAbastecimientoSnapshot({force=false}={}){
     snapshotAt=Date.now();
     return value;
   })();
-  try{return await snapshotPromise;
-  }finally{snapshotPromise=null;}
+  try{return await snapshotPromise;}finally{snapshotPromise=null;}
 }
 
 export function invalidateAbastecimientoSnapshot(){snapshotCache=null;snapshotAt=0;}
@@ -26,27 +26,25 @@ export function invalidateAbastecimientoSnapshot(){snapshotCache=null;snapshotAt
 export async function saveAbastecimientoRemito(remito){
   const {data,error}=await requireSupabase().rpc("abastecimiento_save_remito",{p_remito:remito||{}});
   if(error)throw new Error(`No se pudo guardar el remito en Supabase: ${error.message}`);
-  invalidateAbastecimientoSnapshot();
-  return data||{ok:true};
+  invalidateAbastecimientoSnapshot();return data||{ok:true};
 }
-
+export async function deleteAbastecimientoRemito(id){
+  const {data,error}=await requireSupabase().rpc("abastecimiento_delete_remito",{p_id:String(id||""),p_actor:actor()});
+  if(error)throw new Error(`No se pudo eliminar el remito en Supabase: ${error.message}`);
+  invalidateAbastecimientoSnapshot();return data||{ok:true};
+}
 export async function setAbastecimientoEstado(payload){
   const {data,error}=await requireSupabase().rpc("abastecimiento_set_estado",{p_payload:payload||{}});
   if(error)throw new Error(`No se pudo actualizar el estado en Supabase: ${error.message}`);
-  invalidateAbastecimientoSnapshot();
-  return data||{ok:true};
+  invalidateAbastecimientoSnapshot();return data||{ok:true};
 }
-
 export async function appendAbastecimientoRaba03(rows){
   const {data,error}=await requireSupabase().rpc("abastecimiento_append_raba03",{p_rows:Array.isArray(rows)?rows:[]});
   if(error)throw new Error(`No se pudieron agregar solicitudes en Supabase: ${error.message}`);
-  invalidateAbastecimientoSnapshot();
-  return data||{ok:true,insertedRows:0};
+  invalidateAbastecimientoSnapshot();return data||{ok:true,insertedRows:0};
 }
-
 export async function updateAbastecimientoRaba03(action,rows){
   const {data,error}=await requireSupabase().rpc("abastecimiento_update_raba03",{p_action:action,p_rows:Array.isArray(rows)?rows:[]});
   if(error)throw new Error(`No se pudo actualizar RABA03 en Supabase: ${error.message}`);
-  invalidateAbastecimientoSnapshot();
-  return data||{ok:true,updatedRows:0};
+  invalidateAbastecimientoSnapshot();return data||{ok:true,updatedRows:0};
 }
