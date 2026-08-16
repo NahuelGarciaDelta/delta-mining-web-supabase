@@ -8,9 +8,9 @@ const app=fs.readFileSync("src/App.jsx","utf8");
 const office=fs.readFileSync("src/modules/oficina-tecnica/OficinaTecnicaModule.jsx","utf8");
 const maintenance=fs.readFileSync("src/modules/mantenimiento/MantenimientoRoute.jsx","utf8");
 
-test("ROP05 y RMA15 usan Supabase con fallback legacy puntual",()=>{
+test("ROP05 y RMA15 usan exclusivamente Supabase",()=>{
   assert.match(service,/dataset==="rop05"\?getRop05Page:dataset==="rma15"\?getRma15Page/);
-  assert.match(service,/legacy-fallback/);
+  assert.doesNotMatch(service,/legacy-fallback|APPS_SCRIPT_URL/);
   assert.match(service,/fetchAllOperationalPages/);
 });
 

@@ -12,13 +12,14 @@ import { AcquisitionCostSelector, LICITACIONES_STORAGE_KEY, createEmptyTender, l
 import { registerRefreshTask } from "../../services/refreshManager.js";
 import {getRop02} from "../../data/historicalDataService.js";
 import {normalizeROP02} from "../../shared/domain/index.jsx";
+import {getLicitacionesSnapshot,saveLicitacion} from "../../services/operationalSupabase.js";
 
 // Dependencias compartidas inyectadas desde App mientras se completa la modularización.
 let __deps = {};
 
 
 function LicitacionesView({listaEquipos=[],rop02All:propRop02All=[],rma15=[],usdRate=1,initialTab="nueva",readOnly=false,canDelete=false,canExport=true}){
-  const { APPS_SCRIPT_URL, C, Icon, Spinner, MultiSel, multiIsAll, appAlert, appConfirm, dmNormKey, canonicalEquivalentMachineCode, cleanMachine, mainMachineCode } = __deps;
+  const { C, Icon, Spinner, MultiSel, multiIsAll, appAlert, appConfirm, dmNormKey, canonicalEquivalentMachineCode, cleanMachine, mainMachineCode } = __deps;
   const STORAGE_KEY=LICITACIONES_STORAGE_KEY;
   const emptyTender=createEmptyTender;
   const[licitaciones,setLicitaciones]=useState(loadLocalTenders);
@@ -30,11 +31,8 @@ function LicitacionesView({listaEquipos=[],rop02All:propRop02All=[],rma15=[],usd
   const lastSavedRef=useRef(new Map());
   const saveTimersRef=useRef(new Map());
   const postLicitaciones=useCallback(async(payload)=>{
-    const res=await fetch(APPS_SCRIPT_URL,{method:"POST",cache:"no-store",redirect:"follow",headers:{"Content-Type":"application/x-www-form-urlencoded;charset=UTF-8"},body:new URLSearchParams({payload:JSON.stringify(payload)}).toString()});
-    if(!res.ok)throw new Error(`Error HTTP ${res.status}`);
-    const json=await res.json();
-    if(!json.ok)throw new Error(json?.error?.message||"No se pudo guardar la licitación.");
-    return json;
+    if(payload?.action==="guardar_licitacion"||payload?.action==="save_licitacion")return saveLicitacion(payload.licitacion);
+    throw new Error(`Acción de licitaciones no soportada: ${payload?.action||""}`);
   },[]);
   const guardarLicitacion=useCallback(async(lic,{silent=false}={})=>{
     if(readOnly){if(!silent)await appAlert("Modo solo lectura: no tiene permiso para modificar licitaciones.","Sin permiso");return;}
@@ -53,9 +51,8 @@ function LicitacionesView({listaEquipos=[],rop02All:propRop02All=[],rma15=[],usd
   useEffect(()=>{if(initialTab&&initialTab!==tab)setTab(initialTab);},[initialTab]);
   const cargarLicitaciones=useCallback(async({silent=false}={})=>{
     try{
-      const res=await fetch(`${APPS_SCRIPT_URL}?action=licitaciones_compartidas&_=${Date.now()}`,{cache:"no-store"});
-      const json=await res.json();
-      if(!json.ok)throw new Error(json?.error?.message||"No se pudieron cargar las licitaciones.");
+      const json=await getLicitacionesSnapshot();
+      if(!json?.ok)throw new Error("No se pudieron cargar las licitaciones desde Supabase.");
       const rows=Array.isArray(json.data)?json.data.map(normalizeTender):[];
       if(rows.length){setLicitaciones(rows);setActiveId(prev=>rows.some(x=>x.id===prev)?prev:rows[0].id);rows.forEach(x=>lastSavedRef.current.set(x.id,JSON.stringify(x)));}
       else{const first=emptyTender();setLicitaciones([first]);setActiveId(first.id);}
@@ -63,7 +60,7 @@ function LicitacionesView({listaEquipos=[],rop02All:propRop02All=[],rma15=[],usd
       return rows;
     }catch(err){setLicitacionesError(err?.message||String(err));if(!silent)throw err;return [];}
     finally{setLicitacionesReady(true);}
-  },[APPS_SCRIPT_URL]);
+  },[]);
   useEffect(()=>{let alive=true;cargarLicitaciones().catch(()=>{});return()=>{alive=false;};},[cargarLicitaciones]);
   useEffect(()=>registerRefreshTask("licitaciones",()=>cargarLicitaciones({silent:true}),{views:["licitaciones","licitacionesNueva","licitacionesControl","licitacionesEquipos","licitacionesDatosEquipos"],priority:20}),[cargarLicitaciones]);
   const tender=licitaciones.find(x=>x.id===activeId)||licitaciones[0];

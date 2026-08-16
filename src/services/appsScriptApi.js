@@ -41,13 +41,28 @@ async function readGenericSourceFromSupabase_(source){
 }
 
 export async function fetchSupabaseCachedAction(action){
-  const cacheKey=SPECIAL_CACHE_ACTIONS[action];
-  if(!cacheKey||!isSupabaseConfigured)return null;
+  if(!isSupabaseConfigured)return null;
   const db=requireSupabase();
+  if(action==="mantenimiento_programado"){
+    const {data,error}=await db.rpc("app_pm_snapshot",{});if(error)throw error;return data;
+  }
+  if(action==="licitaciones_compartidas"){
+    const {data,error}=await db.rpc("app_licitaciones_snapshot",{});if(error)throw error;return data;
+  }
+  if(action==="stock_excel_status"||action==="stock_excel_data"){
+    const {data,error}=await db.rpc("app_stock_snapshot",{});if(error)throw error;
+    return action==="stock_excel_status"?{ok:true,meta:data?.meta||{active:false},source:"supabase"}:{...data,source:"supabase"};
+  }
+  if(action==="get_equipment_movements"||action==="get_active_equipment_movements"){
+    const {data,error}=await db.rpc("app_equipment_movements_snapshot",{p_active_only:action==="get_active_equipment_movements"});if(error)throw error;return data;
+  }
+  if(action==="estados_solicitudes"){
+    const {data,error}=await db.rpc("abastecimiento_snapshot",{});if(error)throw error;return{ok:true,data:data?.estados||[],source:"supabase"};
+  }
+  const cacheKey=SPECIAL_CACHE_ACTIONS[action];
+  if(!cacheKey)return null;
   const {data,error}=await db.from("delta_special_cache").select("payload,updated_at").eq("cache_key",cacheKey).maybeSingle();
-  if(error)throw error;
-  if(!data?.payload)return null;
-  return{...data.payload,source:"supabase-cache",cacheUpdatedAt:data.updated_at};
+  if(error)throw error;if(!data?.payload)return null;return{...data.payload,source:"supabase-cache",cacheUpdatedAt:data.updated_at};
 }
 
 async function fetchSupabaseVersions_(){
@@ -194,16 +209,19 @@ async function fetchAppsScriptAction_(url,action,{force=false,compact=true,retri
 }
 
 export async function fetchAction(url,action,options={}){
-  if(SPECIAL_CACHE_ACTIONS[action]){
-    try{
-      const cached=await fetchSupabaseCachedAction(action);
-      if(cached)return cached;
-    }catch(error){console.warn(`[${action}] caché Supabase no disponible; fallback Apps Script`,error);}
+  if(SPECIAL_CACHE_ACTIONS[action]&&isSupabaseConfigured){
+    const value=await fetchSupabaseCachedAction(action);
+    if(value)return value;
+    throw new Error(`Acción ${action} no disponible en Supabase`);
   }
   return fetchAppsScriptAction_(url,action,options);
 }
 
-export async function fetchHealth(url){return fetchAppsScriptAction_(url,"health",{compact:false});}
+export async function fetchHealth(_url){
+  if(!isSupabaseConfigured)return{ok:false,source:"supabase",error:{message:"Supabase no configurado"}};
+  const started=performance.now();const {error}=await requireSupabase().from("rop02").select("id",{head:true,count:"exact"}).limit(1);
+  if(error)throw error;return{ok:true,source:"supabase",latencyMs:Math.round(performance.now()-started),serverTime:new Date().toISOString()};
+}
 
 export async function fetchSource(url,source,{force=false,since=""}={}){
   if(TYPED_SUPABASE_SOURCES.has(source)&&isSupabaseConfigured){
@@ -219,16 +237,9 @@ export async function fetchSource(url,source,{force=false,since=""}={}){
   return fetchAppsScriptAction_(url,source,{force,compact:true,since});
 }
 
-export async function fetchSyncVersions(url){
-  try{
-    const sync=await fetchSupabaseVersions_();
-    if(sync)return sync;
-  }catch(error){console.warn("Manifest Supabase no disponible; fallback Apps Script",error);}
-  try{return await fetchAppsScriptAction_(url,"get_data_versions",{compact:false,retries:1});}
-  catch(_){
-    try{return await fetchAppsScriptAction_(url,"sync",{compact:false,retries:1});}
-    catch(__){return null;}
-  }
+export async function fetchSyncVersions(_url){
+  try{return await fetchSupabaseVersions_();}
+  catch(error){console.warn("Manifest Supabase no disponible",error);return null;}
 }
 
 export async function fetchDatasetQuery(url,params={}){

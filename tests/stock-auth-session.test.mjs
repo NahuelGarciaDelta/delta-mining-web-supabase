@@ -32,28 +32,10 @@ test("restaura el usuario completo y elimina el token al cerrar sesión", () => 
   assert.equal(sessionStorage.getItem("dm_auth_token"), null);
 });
 
-test("Stock usa GET sin actor y POST con email/token, sin Base64", async () => {
-  globalThis.sessionStorage = memoryStorage();
-  saveAuthenticatedSession({email:"stock@delta",authToken:"signed-token"});
-  const calls=[];
-  globalThis.fetch=async(url,options={})=>{calls.push({url:String(url),options});return{ok:true,text:async()=>JSON.stringify({ok:true,rows:[]})};};
-  const { fetchStockData, fetchStockStatus, clearSharedStock, uploadStockExcel } = await import("../src/services/stockService.js");
-  await fetchStockData("https://example.test/exec");
-  await fetchStockStatus("https://example.test/exec");
-  await clearSharedStock("https://example.test/exec");
-  await uploadStockExcel("https://example.test/exec",{file:{name:"stock.xlsx",type:"application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"},rows:[{codigoArticulo:"A1"}],sheetName:"Stock",replace:true});
-  assert.match(calls[0].url,/action=stock_excel_data/);
-  assert.match(calls[1].url,/action=stock_excel_status/);
-  assert.equal(calls[0].options.method,undefined);
-  assert.equal(calls[1].options.method,undefined);
-  const payload=JSON.parse(new URLSearchParams(calls[2].options.body).get("payload"));
-  assert.equal(payload.action,"stock_excel_clear");
-  assert.deepEqual(payload.actor,{email:"stock@delta",token:"signed-token"});
-  const uploadPayload=JSON.parse(new URLSearchParams(calls[3].options.body).get("payload"));
-  assert.equal(uploadPayload.action,"stock_excel_replace");
-  assert.deepEqual(uploadPayload.actor,{email:"stock@delta",token:"signed-token"});
-  assert.equal(uploadPayload.fileName,"stock.xlsx");
-  assert.deepEqual(Object.keys(uploadPayload).sort(), ["action","actor","fileName","mimeType","rows","sheetName"].sort());
-  assert.equal("file" in uploadPayload,false);
-  assert.doesNotMatch(JSON.stringify(uploadPayload),/base64/i);
+test("Stock compartido usa Supabase y no Apps Script", async () => {
+  const source=(await import("node:fs")).readFileSync("src/services/stockService.js","utf8");
+  assert.match(source,/getStockSnapshot/);
+  assert.match(source,/replaceStock/);
+  assert.match(source,/clearStock/);
+  assert.doesNotMatch(source,/fetch\(|APPS_SCRIPT_URL|base64/i);
 });

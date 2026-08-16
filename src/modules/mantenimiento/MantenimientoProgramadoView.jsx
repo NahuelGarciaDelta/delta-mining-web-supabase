@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useState } from "react";
-import { APPS_SCRIPT_URL as DEFAULT_APPS_SCRIPT_URL } from "../../config/app.js";
+import {getPmSnapshot,savePmAction} from "../../services/operationalSupabase.js";
 import { PM_INITIAL_SEED } from "./pmInitialSeed.js";
 import { rangoTurnoPorFecha } from "../analytics/OperationalAnalytics.jsx";
 import { registerRefreshTask } from "../../services/refreshManager.js";
@@ -133,8 +133,7 @@ async function readJsonResponse(response, context) {
 }
 
 export default function MantenimientoProgramadoView({ deps = {}, listaEquipos = [], rop02All: propRop02All = [], initialTab = "dashboard", onTabChange, readOnly = false }) {
-  const { C, Card, Badge, StatCard, MultiSel, LoadingMotoniveladora, APPS_SCRIPT_URL: injectedAppsScriptUrl, appAlert, appConfirm } = deps;
-  const APPS_SCRIPT_URL = injectedAppsScriptUrl || DEFAULT_APPS_SCRIPT_URL;
+  const { C, Card, Badge, StatCard, MultiSel, LoadingMotoniveladora, appAlert, appConfirm } = deps;
   const [tab, setTab] = useState(initialTab || "dashboard");
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -176,31 +175,23 @@ export default function MantenimientoProgramadoView({ deps = {}, listaEquipos = 
 
   const post = useCallback(async payload => {
     if (readOnly) throw new Error("Modo solo lectura: no tiene permiso para modificar Mantenimiento Programado.");
-    if (!APPS_SCRIPT_URL) throw new Error("No está configurada la URL del Apps Script.");
-    const body = new URLSearchParams({ payload: JSON.stringify(payload) });
-    const response = await fetch(APPS_SCRIPT_URL, { method: "POST", headers: { "Content-Type": "application/x-www-form-urlencoded;charset=UTF-8" }, body });
-    const json = await readJsonResponse(response, "Guardado PM");
-    if (!json?.ok) throw new Error(json?.error?.message || "No se pudo guardar.");
-    return json;
-  }, [APPS_SCRIPT_URL, readOnly]);
+    return savePmAction(payload);
+  }, [readOnly]);
 
   const load = useCallback(async ({ silent = false } = {}) => {
     if (!silent) setLoading(true);
     try {
-      if (!APPS_SCRIPT_URL) throw new Error("No está configurada la URL del Apps Script.");
-      const response = await fetch(`${APPS_SCRIPT_URL}?action=mantenimiento_programado&ts=${Date.now()}`, { cache: "no-store" });
-      const json = await readJsonResponse(response, "Carga de Mantenimiento Programado");
-      if (!json?.ok) throw new Error(json?.error?.message || "No se pudo cargar Mantenimiento Programado.");
-      setConfigs(Array.isArray(json.config) ? json.config : []);
-      setRegistros(Array.isArray(json.registros) ? json.registros : []);
-      setProgramaciones(Array.isArray(json.programaciones) ? json.programaciones : JSON.parse(localStorage.getItem("dm_pm_programaciones") || "[]"));
-      setRepuestos(Array.isArray(json.repuestos) ? json.repuestos : JSON.parse(localStorage.getItem("dm_pm_repuestos") || "[]"));
+      const json = await getPmSnapshot();
+      setConfigs(Array.isArray(json?.config) ? json.config : []);
+      setRegistros(Array.isArray(json?.registros) ? json.registros : []);
+      setProgramaciones(Array.isArray(json?.programaciones) ? json.programaciones : []);
+      setRepuestos(Array.isArray(json?.repuestos) ? json.repuestos : []);
     } catch (err) {
       appAlert?.(err.message);
     } finally {
       if (!silent) setLoading(false);
     }
-  }, [APPS_SCRIPT_URL, appAlert]);
+  }, [appAlert]);
 
   useEffect(() => { load(); }, [load]);
 

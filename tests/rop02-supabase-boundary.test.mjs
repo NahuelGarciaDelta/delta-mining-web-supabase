@@ -35,9 +35,9 @@ test("las pantallas ROP02 no consultan query_dataset directamente",()=>{
   for(const path of screens)assert.doesNotMatch(read(path),/fetchDatasetQuery|query_dataset/i,path);
 });
 
-test("Supabase sigue siendo la fuente ROP02 predeterminada del servicio histórico",()=>{
+test("el servicio histórico ROP02 es exclusivamente Supabase",()=>{
   const service=read("../src/data/historicalDataService.js");
-  assert.match(service,/VITE_ROP02_SOURCE\|\|"supabase"/);
-  assert.match(service,/dataset==="rop02"&&ROP02_SOURCE!=="legacy"/);
-  assert.match(service,/legacy-fallback/);
+  assert.match(service,/getRop02Page/);
+  assert.match(service,/getSupabaseOperationalSnapshot/);
+  assert.doesNotMatch(service,/legacy-fallback|APPS_SCRIPT_URL|query_dataset/);
 });

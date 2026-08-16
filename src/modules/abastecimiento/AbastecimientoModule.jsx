@@ -3,7 +3,7 @@ import ReactDOM from "react-dom";
 import { clearSharedStock, uploadStockExcel } from "../../services/stockService.js";
 import { registerRefreshTask } from "../../services/refreshManager.js";
 import { readCachedSource, writeCachedSource } from "../../services/appCache.js";
-import { getAbastecimientoSnapshot, saveAbastecimientoRemito, setAbastecimientoEstado, appendAbastecimientoRaba03, updateAbastecimientoRaba03 } from "../../services/abastecimientoSupabase.js";
+import { getAbastecimientoSnapshot, saveAbastecimientoRemito, deleteAbastecimientoRemito, setAbastecimientoEstado, appendAbastecimientoRaba03, updateAbastecimientoRaba03 } from "../../services/abastecimientoSupabase.js";
 import { useSharedStock } from "./stock/useSharedStock.js";
 import { stockValidationSummary, validateStockWorkbook } from "./stock/stockValidation.js";
 import {useProgressiveRows} from "../../hooks/useProgressiveRows.js";
@@ -1739,15 +1739,7 @@ export function AbastecimientoModule({initialTab="solicitudes",readOnly=false,as
     if(!(await appConfirm("¿Eliminar este remito cargado?")))return;
     setRemitos(prev=>prev.filter(r=>r.id!==id));
     try{
-      const res=await fetch(APPS_SCRIPT_URL,{
-        method:"POST",
-        cache:"no-store",
-        redirect:"follow",
-        headers:{"Content-Type":"application/x-www-form-urlencoded;charset=UTF-8"},
-        body:new URLSearchParams({payload:JSON.stringify({action:"delete_remito_cargado",idRemito:id})}).toString()
-      });
-      const json=await res.json();
-      if(!json.ok)throw new Error(json?.error?.message||"No se pudo eliminar el remito compartido.");
+      await deleteAbastecimientoRemito(id);
       await loadRemitosCompartidos({silent:false});
     }catch(err){
       console.warn("No se pudo eliminar el remito en la hoja compartida:",err);
