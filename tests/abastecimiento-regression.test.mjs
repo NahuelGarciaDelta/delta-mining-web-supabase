@@ -48,3 +48,16 @@ test("Apps Script consolidado tiene rutas únicas y reemplazo transaccional de S
   assert.ok(backend.indexOf("temp.setName(STOCK_MAIN_SHEET_)") < backend.indexOf("ss.deleteSheet(backup)"));
   assert.doesNotMatch(backend, /DriveApp|STOCK_FOLDER_ID|STOCK_DRIVE_FOLDER_ID|STOCK_ACTIVE_FILE_ID|FILE_ID|FILE_URL/);
 });
+
+test("Abastecimiento usa Supabase para RABA03, remitos y estados compartidos", () => {
+  assert.match(moduleSource, /getAbastecimientoSnapshot/);
+  assert.match(moduleSource, /saveAbastecimientoRemito/);
+  assert.match(moduleSource, /setAbastecimientoEstado/);
+  assert.match(moduleSource, /appendAbastecimientoRaba03/);
+  assert.match(moduleSource, /updateAbastecimientoRaba03/);
+  assert.doesNotMatch(moduleSource, /action=remitos_cargados/);
+  assert.doesNotMatch(moduleSource, /action=raba03&limit=all/);
+  assert.doesNotMatch(moduleSource, /action=estados_solicitudes/);
+  assert.doesNotMatch(moduleSource, /save_raba03_cant_enviada/);
+  assert.doesNotMatch(moduleSource, /save_raba03_codigos/);
+});

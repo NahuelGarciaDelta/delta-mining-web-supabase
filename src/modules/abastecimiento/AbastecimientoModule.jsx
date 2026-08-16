@@ -3,6 +3,7 @@ import ReactDOM from "react-dom";
 import { clearSharedStock, uploadStockExcel } from "../../services/stockService.js";
 import { registerRefreshTask } from "../../services/refreshManager.js";
 import { readCachedSource, writeCachedSource } from "../../services/appCache.js";
+import { getAbastecimientoSnapshot, saveAbastecimientoRemito, setAbastecimientoEstado, appendAbastecimientoRaba03, updateAbastecimientoRaba03 } from "../../services/abastecimientoSupabase.js";
 import { useSharedStock } from "./stock/useSharedStock.js";
 import { stockValidationSummary, validateStockWorkbook } from "./stock/stockValidation.js";
 import {useProgressiveRows} from "../../hooks/useProgressiveRows.js";
@@ -370,26 +371,21 @@ export function AbastecimientoModule({initialTab="solicitudes",readOnly=false,as
   },[normCode,fechaSolicitudISO]);
 
   const postEstadoSolicitud=useCallback(async(action,payload={})=>{
-    const res=await fetch(APPS_SCRIPT_URL,{
-      method:"POST",cache:"no-store",redirect:"follow",
-      headers:{"Content-Type":"application/x-www-form-urlencoded;charset=UTF-8"},
-      body:new URLSearchParams({payload:JSON.stringify({action,...payload})}).toString()
-    });
-    if(!res.ok)throw new Error(`Error HTTP ${res.status}`);
-    const json=await res.json();
-    if(!json.ok)throw new Error(json?.error?.message||"No se pudo sincronizar el estado de la solicitud.");
-    return json;
+    if(action==="delete_estados_solicitudes_bulk"){
+      const claves=Array.isArray(payload.claves)?payload.claves:[];
+      await Promise.all(claves.map(clave=>setAbastecimientoEstado({action:"delete_estado_solicitud",clave})));
+      return {ok:true,deleted:claves.length};
+    }
+    return setAbastecimientoEstado({action,...payload});
   },[]);
 
   const loadEstadosSolicitudesCompartidos=useCallback(async({silent=true}={})=>{
     try{
-      const res=await fetchAbastecimiento(`${APPS_SCRIPT_URL}?action=estados_solicitudes&force=1&_=${Date.now()}`,{cache:"no-store",redirect:"follow"});
-      if(!res.ok)throw new Error(`Error HTTP ${res.status}`);
-      const json=await res.json();
-      if(!json.ok)throw new Error(json?.error?.message||"No se pudieron leer los estados compartidos.");
+      const json=await getAbastecimientoSnapshot();
+      if(!json?.ok)throw new Error("No se pudieron leer los estados compartidos desde Supabase.");
       const closed={};
       const rejected={};
-      (json.data||[]).forEach(r=>{
+      (json.estados||[]).forEach(r=>{
         const storedKey=String(r.CLAVE_SOLICITUD||r.clave||"").trim();
         const estado=String(r.ESTADO||r.estado||"").trim().toUpperCase();
         const info={
@@ -433,12 +429,9 @@ export function AbastecimientoModule({initialTab="solicitudes",readOnly=false,as
 
   const loadRemitosCompartidos=useCallback(async({silent=true}={})=>{
     try{
-      const url=`${APPS_SCRIPT_URL}?action=remitos_cargados&limit=all&force=1&_=${Date.now()}`;
-      const res=await fetchAbastecimiento(url,{method:"GET",cache:"no-store",redirect:"follow"});
-      if(!res.ok)throw new Error(`Error HTTP ${res.status}`);
-      const json=await res.json();
-      if(!json.ok)throw new Error(json?.error?.message||"No se pudieron leer los remitos cargados.");
-      const shared=buildRemitosCompartidos(json.data||[]);
+      const json=await getAbastecimientoSnapshot();
+      if(!json?.ok)throw new Error("No se pudieron leer los remitos cargados desde Supabase.");
+      const shared=buildRemitosCompartidos(json.remitos||[]);
       // Sincronización realmente silenciosa: solo actualizar React si cambió el contenido.
       // Así el refresco automático no repinta Abastecimiento ni vuelve a cargar RABA03.
       const signature=JSON.stringify(shared);
@@ -488,21 +481,8 @@ export function AbastecimientoModule({initialTab="solicitudes",readOnly=false,as
   },[tab,loadRemitosCompartidos,loadEstadosSolicitudesCompartidos]);
 
   const saveRemitoCompartido=useCallback(async(remito)=>{
-    const payload={
-      ...remito,
-      usuarioCarga:sessionStorage.getItem("dm_user")||"APP"
-    };
-    const res=await fetch(APPS_SCRIPT_URL,{
-      method:"POST",
-      cache:"no-store",
-      redirect:"follow",
-      headers:{"Content-Type":"application/x-www-form-urlencoded;charset=UTF-8"},
-      body:new URLSearchParams({payload:JSON.stringify({action:"save_remito_cargado",remito:payload})}).toString()
-    });
-    if(!res.ok)throw new Error(`Error HTTP ${res.status}`);
-    const json=await res.json();
-    if(!json.ok)throw new Error(json?.error?.message||"No se pudo guardar el remito en la hoja compartida.");
-    return json;
+    const payload={...remito,usuarioCarga:sessionStorage.getItem("dm_user")||"APP"};
+    return saveAbastecimientoRemito(payload);
   },[]);
 
   const filteredRemitos=useMemo(()=>{
@@ -812,12 +792,9 @@ export function AbastecimientoModule({initialTab="solicitudes",readOnly=false,as
       setError(null);
     }
     try{
-      const url=`${APPS_SCRIPT_URL}?action=raba03&limit=all&_=${Date.now()}`;
-      const res=await fetchAbastecimiento(url,{cache:"no-store"});
-      if(!res.ok)throw new Error(`Error HTTP ${res.status}`);
-      const json=await res.json();
-      if(!json.ok)throw new Error(json?.error?.message||"No se pudo leer RABA03");
-      const raw=Array.isArray(json.data)?json.data:(Array.isArray(json?.sources?.raba03?.data)?json.sources.raba03.data:[]);
+      const json=await getAbastecimientoSnapshot();
+      if(!json?.ok)throw new Error("No se pudo leer RABA03 desde Supabase");
+      const raw=Array.isArray(json.raba03)?json.raba03:[];
       rawRaba03RowsRef.current=raw;
       const sentMap=Array.isArray(remitosOverride)?buildSentByCode(remitosOverride):sentByCodeRef.current;
       const normalizedRows=mapRaba03Rows(raw,sentMap);
@@ -1039,12 +1016,8 @@ export function AbastecimientoModule({initialTab="solicitudes",readOnly=false,as
     }
     try{
       setImportModal(prev=>({...prev,loading:true,error:""}));
-      const res=await fetch(APPS_SCRIPT_URL,{
-        method:"POST",
-        body:new URLSearchParams({payload:JSON.stringify({action:"add_raba03_rows_append_only",rows:rowsToSend})})
-      });
-      const json=await res.json();
-      if(!json.ok)throw new Error(json?.error?.message||"No se pudieron cargar las solicitudes en RABA03.");
+      const json=await appendAbastecimientoRaba03(rowsToSend);
+      if(!json?.ok)throw new Error("No se pudieron cargar las solicitudes en RABA03 de Supabase.");
       const inserted=Number(json.insertedRows||0);
       const duplicates=Number(json.duplicateRows||0);
       let msg=`${inserted} filas nuevas agregadas`;
@@ -1092,12 +1065,8 @@ export function AbastecimientoModule({initialTab="solicitudes",readOnly=false,as
     try{
       setLoading(true);
       setError(null);
-      const res=await fetch(APPS_SCRIPT_URL,{
-        method:"POST",
-        body:new URLSearchParams({payload:JSON.stringify({action:"save_raba03_cant_enviada",rows:payloadRows})})
-      });
-      const json=await res.json();
-      if(!json.ok)throw new Error(json?.error?.message||"No se pudieron guardar los datos en RABA03 base.");
+      const json=await updateAbastecimientoRaba03("cant_enviada",payloadRows);
+      if(!json?.ok)throw new Error("No se pudieron guardar los datos en RABA03 de Supabase.");
       setSuccessAlert({message:`${Number(json.updatedRows||0)} filas guardadas en RABA03 base`});
       await loadRaba03();
     }catch(err){
@@ -1121,12 +1090,8 @@ export function AbastecimientoModule({initialTab="solicitudes",readOnly=false,as
     try{
       setLoading(true);
       setError(null);
-      const res=await fetch(APPS_SCRIPT_URL,{
-        method:"POST",
-        body:new URLSearchParams({payload:JSON.stringify({action:"save_raba03_codigos",rows:payloadRows})})
-      });
-      const json=await res.json();
-      if(!json.ok)throw new Error(json?.error?.message||"No se pudieron guardar los códigos en RABA03 base.");
+      const json=await updateAbastecimientoRaba03("codigos",payloadRows);
+      if(!json?.ok)throw new Error("No se pudieron guardar los códigos en RABA03 de Supabase.");
       setCodigoEdits({});
       setSuccessAlert({message:`${Number(json.updatedRows||0)} códigos actualizados en RABA03 base`});
       await loadRaba03();
