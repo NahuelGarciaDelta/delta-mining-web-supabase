@@ -135,7 +135,7 @@ async function readJsonResponse(response, context) {
 export default function MantenimientoProgramadoView({ deps = {}, listaEquipos = [], rop02All: propRop02All = [], initialTab = "dashboard", onTabChange, readOnly = false }) {
   const { C, Card, Badge, StatCard, MultiSel, LoadingMotoniveladora, appAlert, appConfirm } = deps;
   const [tab, setTab] = useState(initialTab || "dashboard");
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
   const [configs, setConfigs] = useState([]);
   const [registros, setRegistros] = useState([]);
@@ -193,7 +193,7 @@ export default function MantenimientoProgramadoView({ deps = {}, listaEquipos = 
     }
   }, [appAlert]);
 
-  useEffect(() => { load(); }, [load]);
+  useEffect(() => { load({ silent: true }); }, [load]);
 
   // Mantenimiento Programado también participa del motor único de actualización.
   useEffect(() => registerRefreshTask("mantenimiento-programado", () => load({ silent: true }), {
