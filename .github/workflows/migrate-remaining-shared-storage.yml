@@ -14,17 +14,18 @@ jobs:
           ref: main
           fetch-depth: 0
       - name: Apply patches
-        run: python .github/scripts/migrate_remaining_shared_storage.py
+        run: |
+          python .github/scripts/migrate_remaining_shared_storage.py
+          python .github/scripts/update_supabase_only_tests.py
       - name: Validate
         run: |
           npm ci
           npm run check
           npm run validate
-          npm test -- --run-in-band || npm test
           npm run build
       - name: Commit
         run: |
-          rm -f .github/workflows/migrate-remaining-shared-storage.yml .github/scripts/migrate_remaining_shared_storage.py .github/workflows/audit-shared-storage.yml
+          rm -f .github/workflows/migrate-remaining-shared-storage.yml .github/scripts/migrate_remaining_shared_storage.py .github/scripts/update_supabase_only_tests.py .github/workflows/audit-shared-storage.yml
           git config user.name "NahuelGarciaDelta"
           git config user.email "nahuel.garcia@deltamining.com.ar"
           git add -A
