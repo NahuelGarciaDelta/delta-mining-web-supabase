@@ -17,8 +17,8 @@ export async function getAbastecimientoSnapshot({force=false}={}){
     snapshotAt=Date.now();
     return value;
   })();
-  try{return await snapshotPromise;}
-  finally{snapshotPromise=null;}
+  try{return await snapshotPromise;
+  }finally{snapshotPromise=null;}
 }
 
 export function invalidateAbastecimientoSnapshot(){snapshotCache=null;snapshotAt=0;}
@@ -42,4 +42,11 @@ export async function appendAbastecimientoRaba03(rows){
   if(error)throw new Error(`No se pudieron agregar solicitudes en Supabase: ${error.message}`);
   invalidateAbastecimientoSnapshot();
   return data||{ok:true,insertedRows:0};
+}
+
+export async function updateAbastecimientoRaba03(action,rows){
+  const {data,error}=await requireSupabase().rpc("abastecimiento_update_raba03",{p_action:action,p_rows:Array.isArray(rows)?rows:[]});
+  if(error)throw new Error(`No se pudo actualizar RABA03 en Supabase: ${error.message}`);
+  invalidateAbastecimientoSnapshot();
+  return data||{ok:true,updatedRows:0};
 }
