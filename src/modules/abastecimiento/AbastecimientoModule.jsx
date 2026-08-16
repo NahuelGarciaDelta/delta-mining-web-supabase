@@ -819,11 +819,13 @@ export function AbastecimientoModule({initialTab="solicitudes",readOnly=false,as
     if(raba03InitialLoadDoneRef.current)return;
     raba03InitialLoadDoneRef.current=true;
     let cancelled=false;
+    let completed=false;
     const run=async()=>{
       let hasCachedRows=false;
       try{
         const cached=await readCachedSource(RABA03_DATA_CACHE_KEY);
-        const cachedRows=cached?.value?.ok&&Array.isArray(cached.value.data)?cached.value.data:[];
+        const cachedPayload=cached?.data||cached?.value||null;
+        const cachedRows=cachedPayload?.ok&&Array.isArray(cachedPayload.data)?cachedPayload.data:[];
         if(cachedRows.length&&!cancelled){
           hasCachedRows=true;
           setRows(cachedRows);
@@ -838,12 +840,24 @@ export function AbastecimientoModule({initialTab="solicitudes",readOnly=false,as
       if(cancelled)return;
       const sharedRemitos=remitosResult.status==="fulfilled"?remitosResult.value:null;
       await loadRaba03({silent:hasCachedRows,remitosOverride:sharedRemitos});
-      if(!hasCachedRows)setLoading(false);
+      if(cancelled)return;
+      completed=true;
+      setLoading(false);
     };
     run().catch(err=>{
-      if(!cancelled){setError(err?.message||String(err));setLoading(false);}
+      if(!cancelled){
+        completed=true;
+        setError(err?.message||String(err));
+        setLoading(false);
+      }
     });
-    return()=>{cancelled=true;};
+    return()=>{
+      cancelled=true;
+      // React.StrictMode monta/desmonta el efecto una vez en desarrollo.
+      // Si la primera ejecución fue cancelada antes de completar, permitir
+      // que el segundo montaje realice nuevamente la carga inicial.
+      if(!completed)raba03InitialLoadDoneRef.current=false;
+    };
   },[loadRaba03,loadRemitosCompartidos,loadEstadosSolicitudesCompartidos]);
 
   // Registro en el motor único de actualización de la aplicación.
