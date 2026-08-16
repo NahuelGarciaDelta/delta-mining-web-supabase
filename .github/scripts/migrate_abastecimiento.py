@@ -5,7 +5,7 @@ p=Path('src/modules/abastecimiento/AbastecimientoModule.jsx')
 s=p.read_text(encoding='utf-8')
 
 anchor='import { readCachedSource, writeCachedSource } from "../../services/appCache.js";'
-imp='import { getAbastecimientoSnapshot, saveAbastecimientoRemito, setAbastecimientoEstado, appendAbastecimientoRaba03 } from "../../services/abastecimientoSupabase.js";'
+imp='import { getAbastecimientoSnapshot, saveAbastecimientoRemito, setAbastecimientoEstado, appendAbastecimientoRaba03, updateAbastecimientoRaba03 } from "../../services/abastecimientoSupabase.js";'
 if imp not in s:
     if anchor not in s: raise SystemExit('appCache import anchor missing')
     s=s.replace(anchor,anchor+'\n'+imp,1)
@@ -64,16 +64,43 @@ repl='''  const postEstadoSolicitud=useCallback(async(action,payload={})=>{
 s,n=re.subn(pattern,repl,s,count=1,flags=re.S)
 if n!=1: raise SystemExit(f'postEstado callback replacements={n}')
 
-pattern=r'''      const res=await fetch\(APPS_SCRIPT_URL,\{\n        method:"POST",\n        body:new URLSearchParams\(\{payload:JSON.stringify\(\{action:"add_raba03_rows_append_only",rows:rowsToSend\}\)\}\)\.toString\(\)\n      \}\);\n      const json=await res\.json\(\);\n      if\(!json\.ok\)throw new Error\(json\?\.error\?\.message\|\|"No se pudieron cargar las solicitudes en RABA03\."\);'''
-repl='''      const json=await appendAbastecimientoRaba03(rowsToSend);
+old='''      const res=await fetch(APPS_SCRIPT_URL,{
+        method:"POST",
+        body:new URLSearchParams({payload:JSON.stringify({action:"add_raba03_rows_append_only",rows:rowsToSend})})
+      });
+      const json=await res.json();
+      if(!json.ok)throw new Error(json?.error?.message||"No se pudieron cargar las solicitudes en RABA03.");'''
+new='''      const json=await appendAbastecimientoRaba03(rowsToSend);
       if(!json?.ok)throw new Error("No se pudieron cargar las solicitudes en RABA03 de Supabase.");'''
-s,n=re.subn(pattern,repl,s,count=1,flags=re.S)
-if n!=1: raise SystemExit(f'RABA append replacements={n}')
+if old not in s: raise SystemExit('RABA append block missing')
+s=s.replace(old,new,1)
+
+old='''      const res=await fetch(APPS_SCRIPT_URL,{
+        method:"POST",
+        body:new URLSearchParams({payload:JSON.stringify({action:"save_raba03_cant_enviada",rows:payloadRows})})
+      });
+      const json=await res.json();
+      if(!json.ok)throw new Error(json?.error?.message||"No se pudieron guardar los datos en RABA03 base.");'''
+new='''      const json=await updateAbastecimientoRaba03("cant_enviada",payloadRows);
+      if(!json?.ok)throw new Error("No se pudieron guardar los datos en RABA03 de Supabase.");'''
+if old not in s: raise SystemExit('RABA cantidades block missing')
+s=s.replace(old,new,1)
+
+old='''      const res=await fetch(APPS_SCRIPT_URL,{
+        method:"POST",
+        body:new URLSearchParams({payload:JSON.stringify({action:"save_raba03_codigos",rows:payloadRows})})
+      });
+      const json=await res.json();
+      if(!json.ok)throw new Error(json?.error?.message||"No se pudieron guardar los códigos en RABA03 base.");'''
+new='''      const json=await updateAbastecimientoRaba03("codigos",payloadRows);
+      if(!json?.ok)throw new Error("No se pudieron guardar los códigos en RABA03 de Supabase.");'''
+if old not in s: raise SystemExit('RABA codigos block missing')
+s=s.replace(old,new,1)
 
 p.write_text(s,encoding='utf-8')
 
 t=Path('tests/abastecimiento-regression.test.mjs')
 ts=t.read_text(encoding='utf-8')
-guard='''\ntest("Abastecimiento usa Supabase para RABA03, remitos y estados compartidos", () => {\n  assert.match(moduleSource, /getAbastecimientoSnapshot/);\n  assert.match(moduleSource, /saveAbastecimientoRemito/);\n  assert.match(moduleSource, /setAbastecimientoEstado/);\n  assert.match(moduleSource, /appendAbastecimientoRaba03/);\n  assert.doesNotMatch(moduleSource, /action=remitos_cargados/);\n  assert.doesNotMatch(moduleSource, /action=raba03&limit=all/);\n  assert.doesNotMatch(moduleSource, /action=estados_solicitudes/);\n});\n'''
+guard='''\ntest("Abastecimiento usa Supabase para RABA03, remitos y estados compartidos", () => {\n  assert.match(moduleSource, /getAbastecimientoSnapshot/);\n  assert.match(moduleSource, /saveAbastecimientoRemito/);\n  assert.match(moduleSource, /setAbastecimientoEstado/);\n  assert.match(moduleSource, /appendAbastecimientoRaba03/);\n  assert.match(moduleSource, /updateAbastecimientoRaba03/);\n  assert.doesNotMatch(moduleSource, /action=remitos_cargados/);\n  assert.doesNotMatch(moduleSource, /action=raba03&limit=all/);\n  assert.doesNotMatch(moduleSource, /action=estados_solicitudes/);\n  assert.doesNotMatch(moduleSource, /save_raba03_cant_enviada/);\n  assert.doesNotMatch(moduleSource, /save_raba03_codigos/);\n});\n'''
 if 'Abastecimiento usa Supabase para RABA03' not in ts:
     t.write_text(ts+guard,encoding='utf-8')
