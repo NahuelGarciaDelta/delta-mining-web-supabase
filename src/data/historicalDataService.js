@@ -37,8 +37,14 @@ export async function fetchDatasetPage(dataset,params={}){
 
 export async function getDataset(dataset,params={}){
   const cached=await readDatasetQuery(dataset,params);
-  try{return await fetchDatasetPage(dataset,params);}
-  catch(error){if(cached)return cached;throw error;}
+  if(cached){
+    // Stale-while-revalidate: la vista recibe IndexedDB/memoria inmediatamente.
+    // La consulta a Supabase se hace detrás y actualiza el cache para la próxima
+    // lectura sin bloquear la navegación actual.
+    fetchDatasetPage(dataset,params).catch(()=>{});
+    return cached;
+  }
+  return fetchDatasetPage(dataset,params);
 }
 
 export const getRop02=params=>getDataset("rop02",params);
@@ -71,11 +77,7 @@ export const getRop02LatestByEquipmentProject=params=>getLatestRop02ByEquipment(
 export const getRop02MonthlySummary=params=>getSupabaseMonthlySummary(params);
 export const getRop02OperationalSnapshot=params=>{
   const p=params||{};
-  // Los snapshots compactos sirven para vistas de estado actual (7 días).
-  // Ventanas analíticas más largas, como Vehículos, necesitan todos los
-  // partes ROP02 correspondientes. Sin fechas explícitas, Vehículos replica
-  // el comportamiento histórico de la app original y consulta todo ROP02.
-  if(p.snapshot||(Number(p.days)||7)>7)return fetchDatasetPage("rop02",fullOperationalWindowParams_(p));
+  if(p.snapshot||(Number(p.days)||7)>7)return getDataset("rop02",fullOperationalWindowParams_(p));
   return getSupabaseOperationalSnapshot(p);
 };
 export const getRop02Stats=params=>getSupabaseRop02Stats(params);
