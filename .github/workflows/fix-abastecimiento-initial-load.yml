@@ -1,0 +1,31 @@
+name: Fix Abastecimiento initial load
+on:
+  push:
+    paths:
+      - '.github/workflows/fix-abastecimiento-initial-load.yml'
+permissions:
+  contents: write
+jobs:
+  fix:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 0
+      - name: Apply fix
+        run: python .github/scripts/fix_abastecimiento_initial_load.py
+      - name: Validate
+        run: |
+          npm ci
+          npm run check
+          npm run validate
+          npm run build
+      - name: Commit
+        run: |
+          rm -f .github/workflows/fix-abastecimiento-initial-load.yml .github/scripts/fix_abastecimiento_initial_load.py
+          git config user.name "NahuelGarciaDelta"
+          git config user.email "nahuel.garcia@deltamining.com.ar"
+          git add -A
+          git commit -m "Corregir carga infinita de Abastecimiento"
+          git push origin main
