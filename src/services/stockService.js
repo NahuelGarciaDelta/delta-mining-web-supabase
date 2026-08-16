@@ -1,56 +1,27 @@
-import { getAuthenticatedUser } from "./authSession.js";
-import { fetchAction } from "./appsScriptApi.js";
+import {clearStock,getStockSnapshot,replaceStock} from "./operationalSupabase.js";
 
-function actor() {
-  const currentUser = getAuthenticatedUser();
-  return {
-    email: String(currentUser?.email || "").trim().toLowerCase(),
-    token: String(currentUser?.authToken || currentUser?.token || ""),
+export async function fetchStockStatus(_url){
+  const value=await getStockSnapshot();
+  return{ok:true,meta:value?.meta||{active:false},source:"supabase"};
+}
+
+export async function fetchStockData(_url){
+  const value=await getStockSnapshot();
+  return{ok:true,meta:value?.meta||{active:false},rows:Array.isArray(value?.rows)?value.rows:[],source:"supabase"};
+}
+
+export async function uploadStockExcel(_url,{file,rows,sheetName,replace=false}){
+  const meta={
+    fileName:file?.name||"Stock.xlsx",
+    mimeType:file?.type||"application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    sourceSheet:sheetName||"",
+    activeSheet:"STOCK CRITICO",
+    replace:Boolean(replace),
+    validRows:Array.isArray(rows)?rows.length:0,
+    rejectedRows:0,
+    duplicateCodes:0,
   };
+  return replaceStock(meta,Array.isArray(rows)?rows:[]);
 }
 
-async function parseResponse(response) {
-  if (!response.ok) throw new Error(`HTTP ${response.status} desde el Apps Script`);
-  const text = await response.text();
-  let json;
-  try { json = JSON.parse(text); }
-  catch { throw new Error("El Apps Script devolvió una respuesta no válida."); }
-  if (!json?.ok) throw new Error(json?.error?.message || "La operación de Stock no pudo completarse.");
-  return json;
-}
-
-async function postStock(url, payload) {
-  const currentActor = actor();
-  if (!currentActor.email || !currentActor.token) {
-    throw new Error("Tu sesión no tiene un token válido. Cerrá sesión e iniciá nuevamente.");
-  }
-  const response = await fetch(url, {
-    method: "POST",
-    cache: "no-store",
-    redirect: "follow",
-    headers: { "Content-Type": "application/x-www-form-urlencoded;charset=UTF-8" },
-    body: new URLSearchParams({ payload: JSON.stringify({ ...payload, actor: currentActor }) }).toString(),
-  });
-  return parseResponse(response);
-}
-
-function getStock(url, action) {
-  return fetchAction(url, action, { compact: false, retries: 1 });
-}
-
-export function fetchStockStatus(url) { return getStock(url, "stock_excel_status"); }
-export function fetchStockData(url) { return getStock(url, "stock_excel_data"); }
-
-export function uploadStockExcel(url, { file, rows, sheetName, replace = false }) {
-  return postStock(url, {
-    action: replace ? "stock_excel_replace" : "stock_excel_upload",
-    fileName: file.name,
-    mimeType: file.type || "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-    rows,
-    sheetName: sheetName || "",
-  });
-}
-
-export function clearSharedStock(url) {
-  return postStock(url, { action: "stock_excel_clear" });
-}
+export function clearSharedStock(_url){return clearStock();}
