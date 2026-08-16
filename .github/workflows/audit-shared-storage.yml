@@ -12,7 +12,9 @@ jobs:
       - uses: actions/checkout@v4
       - name: Find legacy storage calls
         run: |
-          echo '=== APPS_SCRIPT_URL / fetch POST / actions ==='
-          grep -RInE 'APPS_SCRIPT_URL|method:[[:space:]]*["'"']POST|action:[[:space:]]*["'"']|action=' src --include='*.js' --include='*.jsx' | head -n 1200 || true
-          echo '=== localStorage shared-looking keys ==='
-          grep -RInE 'localStorage|sessionStorage' src/modules src/services --include='*.js' --include='*.jsx' | head -n 800 || true
+          echo '=== APPS_SCRIPT_URL ==='
+          grep -RIn 'APPS_SCRIPT_URL' src --include='*.js' --include='*.jsx' | head -n 1200 || true
+          echo '=== action names ==='
+          grep -RInE 'save_|update_|delete_|registrar_|guardar_|upload_|stock_|movimiento|programacion|repuesto' src/modules src/services --include='*.js' --include='*.jsx' | head -n 1500 || true
+          echo '=== local/session storage ==='
+          grep -RInE 'localStorage|sessionStorage' src/modules src/services --include='*.js' --include='*.jsx' | head -n 1000 || true
