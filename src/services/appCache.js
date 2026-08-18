@@ -1,10 +1,10 @@
 export const APP_FILTERS_STATE_KEY="dm_app_filters_state_v1";
-const APP_IDB_NAME="delta_mining_cache";
-const APP_IDB_VERSION=2;
+const APP_IDB_NAME="delta_mining_cache_backend_20260818_v5";
+const APP_IDB_VERSION=1;
 const APP_IDB_STORE="datasets";
-const APP_CACHE_VERSION=2;
-const APP_CACHE_MANIFEST_KEY="dm_app_cache_manifest_v2";
-const APP_LOCAL_CACHE_PREFIX="dm_app_cache_source_v2_";
+const APP_CACHE_VERSION=5;
+const APP_CACHE_MANIFEST_KEY="dm_app_cache_manifest_v5";
+const APP_LOCAL_CACHE_PREFIX="dm_app_cache_source_v5_";
 
 let appCacheDBPromise_=null;
 const memoryCache_=new Map();
@@ -75,7 +75,7 @@ async function writeCachedSources(sources){
   if(!entries.length)return;
   const updatedAt=new Date().toISOString();
   const records=entries.map(([key,data])=>({key,data,updatedAt,count:Array.isArray(data?.data)?data.data.length:0,version:Number(data?.meta?.serverVersion||APP_CACHE_VERSION)}));
-  records.forEach(rec=>{memoryCache_.set(rec.key,rec);updateCacheManifest_(rec.key,rec);try{window.localStorage.removeItem(APP_LOCAL_CACHE_PREFIX+rec.key);}catch(_){}});
+  records.forEach(rec=>{memoryCache_.set(rec.key,normalizeRecord_(rec));updateCacheManifest_(rec.key,rec);try{window.localStorage.removeItem(APP_LOCAL_CACHE_PREFIX+rec.key);}catch(_){}});
   try{
     const db=await openAppCacheDB();
     const tx=db.transaction(APP_IDB_STORE,"readwrite");
