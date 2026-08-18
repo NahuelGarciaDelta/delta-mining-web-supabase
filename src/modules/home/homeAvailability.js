@@ -56,6 +56,16 @@ const canonicalEquipmentCode=value=>{
   return equivalences[code]||code;
 };
 
+export function isHomeAvailabilityVehicleCode(value){
+  const code=canonicalEquipmentCode(value).replace(/[^A-Z0-9]/g,"");
+  if(!code)return false;
+  if(/^CTA/.test(code))return true;
+  if(/^(AG|AH|AI)[0-9A-Z]{4,}$/.test(code))return true;
+  if(["CAC","CAR","CAV","CAA"].some(prefix=>code.startsWith(prefix)))return true;
+  if(code==="CAT0073")return true;
+  return false;
+}
+
 export function isBajoSanJuanJustification(value){
   return normText(value)===BAJO_SAN_JUAN_NORM;
 }
@@ -155,7 +165,10 @@ export function getBajoSanJuanExclusionMap(admitidos={},latestRop02ByCode=new Ma
   const out=new Map();
   Object.entries(admitidos||{}).forEach(([key,saved])=>{
     const match=String(key).match(/^atrasado_(.+)_(\d{4}-\d{2}-\d{2})$/);
-    if(!match||!isBajoSanJuanJustification(saved?.causa))return;
+    // En el Resumen General una justificación vigente significa que el equipo ya
+    // no forma parte de la flota operativa del proyecto, sin importar el motivo
+    // elegido (Bajó a San Juan, Desmovilización, Otra, etc.).
+    if(!match||!String(saved?.causa||"").trim())return;
     const code=String(saved?.codigo||saved?.maquina||match[1]).trim();
     const project=normalizeRop02Project(saved?.proyecto);
     const movementKey=project?equipmentProjectKey(code,project):code;
@@ -212,7 +225,12 @@ function rowState(row){
 
 export function calculateHomeAvailabilityFromRop02(rop02Rows=[],admitidos={},options={}){
   const normalizeCode=options.normalizeEquipmentCode||canonicalEquipmentCode;
-  const fechaMaximaROP02=getMaxRop02Date(rop02Rows,{normalizeEquipmentCode:normalizeCode});
+  const eligibleRows=(rop02Rows||[]).filter(row=>{
+    if(row?._excluded)return false;
+    const code=normalizeCode(row.maquina||row._internoRaw);
+    return code&&!isHomeAvailabilityVehicleCode(code);
+  });
+  const fechaMaximaROP02=getMaxRop02Date(eligibleRows,{normalizeEquipmentCode:normalizeCode});
   if(!fechaMaximaROP02)return {
     disponibilidad:null,
     fechaMaximaROP02:"",
@@ -228,10 +246,9 @@ export function calculateHomeAvailabilityFromRop02(rop02Rows=[],admitidos={},opt
   };
 
   const ventanaDesde=addDaysISO(fechaMaximaROP02,-6);
-  const exclusionMap=options.exclusionMap||getBajoSanJuanExclusionMap(admitidos,buildLatestRop02ByCode(rop02Rows,{normalizeEquipmentCode:normalizeCode}));
+  const exclusionMap=options.exclusionMap||getBajoSanJuanExclusionMap(admitidos,buildLatestRop02ByCode(eligibleRows,{normalizeEquipmentCode:normalizeCode}));
   const porEquipo=new Map();
-  for(const row of rop02Rows||[]){
-    if(row?._excluded)continue;
+  for(const row of eligibleRows){
     const fecha=dateISO(row.fecha);
     if(!fecha||fecha<ventanaDesde||fecha>fechaMaximaROP02)continue;
     const code=normalizeCode(row.maquina||row._internoRaw);
@@ -260,17 +277,14 @@ export function calculateHomeAvailabilityFromRop02(rop02Rows=[],admitidos={},opt
       excluidosBajoSanJuan+=1;
       continue;
     }
-    const isFs=!(item.horas>0)&&item.estados?.has("FS");
-    const isEm=!(item.horas>0)&&item.estados?.has("EM");
-    const isOd=!(item.horas>0)&&item.estados?.has("OD");
-    const estado=item.horas>0?"Trabajo":(isOd?"OD":(isFs?"FS":(isEm?"EM":"SIN REGISTRO")));
+    const isFs=!(item.horas>0)&&item.estados?.size===1&&item.estados.has("FS");
+    const estado=item.horas>0?"Trabajo":(isFs?"FS":(item.estados?.has("OD")?"OD":"Trabajo"));
     const detail={interno:item.code,lugar:item.lugar||"",estado,ultimoROP02:item.fecha,horas:Number(item.horas)||0};
     items.push(detail);
-    if(item.horas>0||isOd)disponibles+=1;
-    else{
+    if(isFs){
       noDisponibles+=1;
-      if(isFs)fsItems.push(detail);
-    }
+      fsItems.push(detail);
+    }else disponibles+=1;
   }
   const elegiblesAntesExclusiones=porEquipo.size;
   const elegiblesDespuesExclusiones=disponibles+noDisponibles;
