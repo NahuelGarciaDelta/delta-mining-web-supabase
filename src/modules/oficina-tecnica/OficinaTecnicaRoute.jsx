@@ -58,13 +58,17 @@ function buildAtrasoDeps(deps,{readOnly=false}={}){
           ...col,
           render:(value,row,...rest)=>{
             const formatted=formatAtrasoEquipmentCode(value);
-            return typeof originalRender==="function"?originalRender(formatted,row,...rest):formatted;
+            return typeof originalRender==="function"
+              ? originalRender(formatted,row,...rest)
+              : formatted;
           },
         };
       });
       if(readOnly)cols=cols.filter(col=>String(col?.label||"").trim().toLowerCase()!=="acción");
     }
-    const rows=readOnly&&Array.isArray(props?.rows)?props.rows.filter(row=>!row?.admitido):props?.rows;
+    const rows=readOnly&&Array.isArray(props?.rows)
+      ? props.rows.filter(row=>!row?.admitido)
+      : props?.rows;
     return <BaseTable {...props} cols={cols} rows={rows}/>;
   }:BaseTable;
 
@@ -83,7 +87,13 @@ function buildAtrasoDeps(deps,{readOnly=false}={}){
     return <BaseAlertBanner {...props}/>;
   }:BaseAlertBanner;
 
-  return {...deps,Card:AtrasoCard,Table:AtrasoTable,StatCard:AtrasoStatCard,AlertBanner:AtrasoAlertBanner};
+  return {
+    ...deps,
+    Card:AtrasoCard,
+    Table:AtrasoTable,
+    StatCard:AtrasoStatCard,
+    AlertBanner:AtrasoAlertBanner,
+  };
 }
 
 function buildOperationalPeriodDeps(deps){
@@ -96,6 +106,7 @@ function mergeRop02Sources(baseRows,remoteRows){
   const remote=Array.isArray(remoteRows)?remoteRows:[];
   if(!remote.length)return base;
   if(!base.length)return remote;
+
   const merged=[];
   const seen=new Set();
   for(const row of [...remote,...base]){
@@ -127,6 +138,9 @@ export function OficinaTecnicaRoute(props){
   const [equiposRop02,setEquiposRop02]=useState(null);
   const [rop02ViewRevision,setRop02ViewRevision]=useState(0);
 
+  // Equipos usa exactamente la misma clave histórica siempre: ROP02 completo,
+  // fecha descendente. Se muestra el último caché inmediatamente; cuando llega una
+  // versión nueva en segundo plano se remonta sólo este módulo y lee ese caché ya fresco.
   useEffect(()=>{
     const onHistoricalUpdated=(event)=>{
       const detail=event?.detail||{};
@@ -137,6 +151,9 @@ export function OficinaTecnicaRoute(props){
     return()=>window.removeEventListener(HISTORICAL_DATASET_UPDATED_EVENT,onHistoricalUpdated);
   },[]);
 
+  // El botón global Actualizar y el auto-refresh llaman refreshManager. Esta tarea
+  // fuerza la MISMA consulta que consume la vista Equipos, evitando caches paralelos
+  // asc/desc y haciendo que la actualización se vea apenas termina la descarga.
   useEffect(()=>registerRefreshTask(
     "oficina-rop02-full-refresh",
     async()=>refreshHistoricalDataset("rop02",{limit:"all",sortBy:"fecha",sortDirection:"desc"}),
@@ -166,9 +183,15 @@ export function OficinaTecnicaRoute(props){
 
   const routedProps=useMemo(()=>{
     let nextProps=props;
-    if(props?.view==="listaEquipos")nextProps={...nextProps,rop02All:rop02Equipos};
-    if(props?.view==="horometros"||props?.view==="chc")nextProps={...nextProps,deps:buildOperationalPeriodDeps(nextProps.deps)};
-    if(atrasoView)nextProps={...nextProps,deps:buildAtrasoDeps(nextProps.deps,{readOnly:readOnlyAtraso})};
+    if(props?.view==="listaEquipos"){
+      nextProps={...nextProps,rop02All:rop02Equipos};
+    }
+    if(props?.view==="horometros"||props?.view==="chc"){
+      nextProps={...nextProps,deps:buildOperationalPeriodDeps(nextProps.deps)};
+    }
+    if(atrasoView){
+      nextProps={...nextProps,deps:buildAtrasoDeps(nextProps.deps,{readOnly:readOnlyAtraso})};
+    }
     return nextProps;
   },[props,rop02Equipos,atrasoView,readOnlyAtraso]);
 
