@@ -1,32 +1,33 @@
-import {getRop05,getRma15} from "../data/historicalDataService.js";
+import {getRop02,getRop05,getRma15,refreshHistoricalDataset} from "../data/historicalDataService.js";
 
 let preloadPromise=null;
 let preloadDone=false;
 
-export function isHistoricalPreloadReady(){
-  return preloadDone;
-}
+export function isHistoricalPreloadReady(){return preloadDone;}
 
-export function preloadHistoricalDatasets(){
-  if(preloadDone)return Promise.resolve(true);
-  if(preloadPromise)return preloadPromise;
+export function preloadHistoricalDatasets({force=false}={}){
+  if(preloadDone&&!force)return Promise.resolve(true);
+  if(preloadPromise&&!force)return preloadPromise;
 
-  const common={
-    limit:"all",
-    offset:0,
-    sortBy:"fecha",
-    sortDirection:"desc"
-  };
+  const common={limit:"all",offset:0,sortBy:"fecha",sortDirection:"desc"};
+  const jobs=force
+    ?[
+      refreshHistoricalDataset("rop02",common),
+      refreshHistoricalDataset("rop05",common),
+      refreshHistoricalDataset("rma15",common),
+    ]
+    :[
+      getRop02(common),
+      getRop05(common),
+      getRma15(common),
+    ];
 
-  preloadPromise=Promise.allSettled([
-    getRop05(common),
-    getRma15(common)
-  ]).then(results=>{
+  const task=Promise.allSettled(jobs).then(results=>{
     preloadDone=results.some(result=>result.status==="fulfilled");
     return preloadDone;
   }).finally(()=>{
-    if(!preloadDone)preloadPromise=null;
+    if(preloadPromise===task)preloadPromise=null;
   });
-
-  return preloadPromise;
+  preloadPromise=task;
+  return task;
 }
