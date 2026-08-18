@@ -1,9 +1,11 @@
 import {useCallback,useEffect,useMemo,useState} from "react";
+import {APPS_SCRIPT_URL} from "../config/app.js";
+import {fetchAction,fetchSyncVersions} from "./appsScriptApi.js";
+import {postToAppsScript} from "./writeActions.js";
 import {readCachedSource,writeCachedSource} from "./appCache.js";
 import {registerRefreshTask} from "./refreshManager.js";
 import {equipmentProjectKey,normalizeRop02Project} from "../modules/home/homeAvailability.js";
-import {getMovimientoVigentePorEquipo,movementsToAtrasoMap,normalizeEquipmentMovementCode} from "./equipmentMovementsDomain.js";
-import {getEquipmentMovementsSnapshot,saveEquipmentMovementSupabase,cancelEquipmentMovementSupabase} from "./operationalSupabase.js";
+import {appendEquipmentMovementLinkMetadata,getMovimientoVigentePorEquipo,movementsToAtrasoMap,normalizeEquipmentMovementCode} from "./equipmentMovementsDomain.js";
 
 export {getMovimientoVigentePorEquipo,movementsToAtrasoMap} from "./equipmentMovementsDomain.js";
 
@@ -15,21 +17,24 @@ const persistCache_=async(version=0)=>{
   cache={...cache,version:Number(version||cache.version||0)};
   return writeCachedSource(CACHE_KEY,{ok:true,data:cache.data,meta:{serverVersion:cache.version}}).catch(()=>{});
 };
-
 export async function loadEquipmentMovements({force=false,revalidate=true}={}){
   if(cache.loading)return cache.loading;
   cache.loading=(async()=>{
+    let record=null;
     if(!cache.loaded){
-      const record=await readCachedSource(CACHE_KEY).catch(()=>null);
+      record=await readCachedSource(CACHE_KEY).catch(()=>null);
       if(record?.data?.ok&&Array.isArray(record.data.data)){
-        cache={data:record.data.data,loaded:true,loading:cache.loading,error:"",version:Number(record.data?.meta?.serverVersion||record.version||0)};
-        emit();
+        cache={data:record.data.data,loaded:true,loading:cache.loading,error:"",version:Number(record.data?.meta?.serverVersion||record.version||0)};emit();
       }
     }
     if(cache.loaded&&!force&&!revalidate)return cache;
-    const response=await getEquipmentMovementsSnapshot(false);
-    cache={data:Array.isArray(response?.data)?response.data:[],loaded:true,loading:cache.loading,error:"",version:Number(response?.meta?.serverVersion||Date.now())};
-    await persistCache_(cache.version);emit();return cache;
+    const versions=force?null:await fetchSyncVersions(APPS_SCRIPT_URL);
+    const localVersion=Number(cache.version||record?.data?.meta?.serverVersion||0);
+    const serverVersion=Number(versions?.versions?.[CACHE_KEY]||0);
+    if(!force&&cache.loaded&&serverVersion>0&&localVersion===serverVersion)return cache;
+    const response=await fetchAction(APPS_SCRIPT_URL,"get_equipment_movements",{force,compact:false});
+    cache={data:Array.isArray(response.data)?response.data:[],loaded:true,loading:cache.loading,error:"",version:Number(response?.meta?.serverVersion||serverVersion||0)};
+    await persistCache_(response?.meta?.serverVersion||serverVersion);emit();return cache;
   })().catch(error=>{
     cache={...cache,loaded:true,loading:null,error:error?.message||"No fue posible cargar movimientos de equipos."};emit();
     if(cache.data.length)return cache;
@@ -39,20 +44,37 @@ export async function loadEquipmentMovements({force=false,revalidate=true}={}){
 }
 
 export async function saveEquipmentMovement(movement){
-  const response=await saveEquipmentMovementSupabase(movement);
+  const prepared={...movement};
+  if(String(prepared.tipoMovimiento||"").toUpperCase()==="CAMBIO_PROYECTO"){
+    const pending=typeof window!=="undefined"?window.__dmPendingEquipmentMovementLink:null;
+    if(!prepared.internoDestino&&pending?.valid){
+      const pendingProject=normalizeRop02Project(pending.destinationProject||"");
+      const movementProject=normalizeRop02Project(prepared.proyectoDestino||"");
+      if(!pendingProject||!movementProject||pendingProject===movementProject){
+        prepared.internoDestino=pending.destinationCode||"";
+        prepared.fechaPrimerRop02Destino=pending.firstDestinationDate||"";
+      }
+    }
+    if(prepared.internoDestino){
+      prepared.observacion=appendEquipmentMovementLinkMetadata(prepared.observacion,prepared.internoDestino,prepared.fechaPrimerRop02Destino);
+    }
+  }
+  const response=await postToAppsScript({action:"save_equipment_movement",movement:prepared});
+  if(typeof window!=="undefined")window.__dmPendingEquipmentMovementLink=null;
   const saved=response?.movement;
   if(saved){
-    const next=cache.data.map(item=>item.activo&&item.internoNormalizado===saved.internoNormalizado&&item.proyectoOrigen===saved.proyectoOrigen?{...item,activo:false,estado:"SUPERADO"}:item);
-    cache={data:[...next,saved],loaded:true,loading:null,error:"",version:Number(response.version||Date.now())};
-    await persistCache_(cache.version);emit();
+    const next=cache.data.map(item=>item.activo&&item.internoNormalizado===saved.internoNormalizado&&item.proyectoOrigen===saved.proyectoOrigen
+      ?{...item,activo:false,estado:"SUPERADO"}:item);
+    cache={data:[...next,saved],loaded:true,loading:null,error:"",version:Number(response.version||cache.version||0)};
+    await persistCache_(response.version);emit();
   }
   return response;
 }
 
-export async function cancelEquipmentMovement(id,_usuario){
-  const response=await cancelEquipmentMovementSupabase(id);
-  cache={data:cache.data.map(item=>String(item.id)===String(id)?{...item,activo:false,estado:"CANCELADO"}:item),loaded:true,loading:null,error:"",version:Number(response.version||Date.now())};
-  await persistCache_(cache.version);emit();
+export async function cancelEquipmentMovement(id,usuario){
+  const response=await postToAppsScript({action:"cancel_equipment_movement",id,usuario});
+  cache={data:cache.data.map(item=>String(item.id)===String(id)?{...item,activo:false,estado:"CANCELADO"}:item),loaded:true,loading:null,error:"",version:Number(response.version||cache.version||0)};
+  await persistCache_(response.version);emit();
   return response;
 }
 
