@@ -26,7 +26,7 @@ export async function readDatasetQuery(dataset,params={}){
   const key=buildDatasetQueryKey(dataset,params);
   if(memory.has(key)){const value=memory.get(key);remember_(key,value);return{...value,cacheHit:true,cacheLevel:"memory"};}
   const record=await readCachedSource(`query:${key}`).catch(()=>null);
-  if(record?.data?.ok){remember_(key,record.data);return{...record.data,cacheHit:true,cacheLevel:"indexeddb"};}
+  if(record?.data?.ok){remember_(key,record.data);return{...record.data,cacheHit:true,cacheLevel:"indexeddb",cacheUpdatedAt:record.updatedAt||null};}
   return null;
 }
 
@@ -104,7 +104,15 @@ export const getRop02Stats=params=>getSupabaseRop02Stats(params);
 export const getRop02Facets=params=>getSupabaseRop02Facets(params);
 export const getRop02Rop05Control=params=>getSupabaseRop02Rop05Control(params);
 export const getRma15EquipmentUniverse=params=>getRma15EquipmentUniverseSupabase(params);
-export const getRma15OpenOtSummary=params=>getRma15OpenOtSummarySupabase(params);
+export async function getRma15OpenOtSummary(params={}){
+  const response=await getRma15OpenOtSummarySupabase(params);
+  // Igual que la app original: un resumen vacío no reemplaza el cálculo local
+  // sobre RMA15 completo. Se fuerza el fallback de Bienvenida.
+  if(!Array.isArray(response?.data)||response.data.length===0){
+    throw new Error("Resumen de OT abiertas vacío; recalcular desde RMA15 completo");
+  }
+  return response;
+}
 
 export async function getEquipmentHistory({equipo,desde="",hasta=""}){
   if(!String(equipo||"").trim())return{rop02:[],rop05:[],rma15:[]};
