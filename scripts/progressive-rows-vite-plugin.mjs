@@ -12,6 +12,17 @@ function transformCommonUi(code){
   return code.replace(/>Mostrar 250 más<\/button>/g,">Ver 100 más</button>");
 }
 
+function transformInformeCostos(code){
+  let s=code;
+  const oldMonthly=`  const hastaCostoMensual=dFechaH||"";\n\n  React.useEffect(()=>{\n    setFechaHCostoMensual(dFechaH||"");\n  },[dFechaH]);`;
+  const newMonthly=`  const hastaCostoMensual=dFechaH||"";\n\n  // Mantener el período mensual alineado con el filtro general Mes/Año.\n  React.useEffect(()=>{\n    setFechaDCostoMensual(dFechaD||"");\n    setFechaHCostoMensual(dFechaH||"");\n  },[dFechaD,dFechaH]);`;
+  s=replaceOnce(s,oldMonthly,newMonthly,"sincronización mensual Informe de Costos");
+
+  const obsolete=`\n  React.useEffect(()=>{\n    if(!soloFiltroMesCostos)return;\n    const mismoMes=fechaD&&fechaH&&String(fechaD).slice(0,7)===String(fechaH).slice(0,7);\n    if((fechaD||fechaH)&&!mismoMes){\n      setFechaD("");\n      setFechaH("");\n    }\n  },[soloFiltroMesCostos,fechaD,fechaH]);\n`;
+  if(s.includes(obsolete))s=s.replace(obsolete,"\n");
+  return s;
+}
+
 function transformAbastecimiento(code){
   let s=code;
   s=s.replace("const [stockVisibleLimit,setStockVisibleLimit]=useState(250);","const [stockVisibleLimit,setStockVisibleLimit]=useState(100);");
@@ -53,6 +64,7 @@ export function progressiveRowsVitePlugin(){
       const file=normalizeId(id);
       if(file.endsWith("/src/components/ui/index.jsx"))return{code:transformCommonUi(code),map:null};
       if(file.endsWith("/src/modules/abastecimiento/AbastecimientoModule.jsx"))return{code:transformAbastecimiento(code),map:null};
+      if(file.endsWith("/src/modules/informe-costos/InformeCostosView.jsx"))return{code:transformInformeCostos(code),map:null};
       return null;
     },
   };
