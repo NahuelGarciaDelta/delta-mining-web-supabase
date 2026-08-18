@@ -9,10 +9,17 @@ export {createPagedDatasetController} from "./pagedDatasetController.js";
 const memory=new Map();
 const pending=new Map();
 const MAX_MEMORY_QUERIES=8;
+const HISTORICAL_UPDATED_EVENT="dm-historical-dataset-updated";
+const COMMON_HISTORICAL_QUERY=Object.freeze({limit:"all",offset:0,sortBy:"fecha",sortDirection:"desc"});
 
 function remember_(key,value){
   memory.delete(key);memory.set(key,value);
   while(memory.size>MAX_MEMORY_QUERIES)memory.delete(memory.keys().next().value);
+}
+
+function notifyDatasetUpdated_(dataset,key,value,params){
+  if(typeof window==="undefined"||typeof window.dispatchEvent!=="function")return;
+  try{window.dispatchEvent(new CustomEvent(HISTORICAL_UPDATED_EVENT,{detail:{dataset,key,value,params:{...(params||{})}}}));}catch(_){}
 }
 
 export async function readDatasetQuery(dataset,params={}){
@@ -31,16 +38,19 @@ export async function fetchDatasetPage(dataset,params={}){
   const typedGetter=dataset==="rop05"?getRop05Page:dataset==="rma15"?getRma15Page:null;
   if(dataset!=="rop02"&&!typedGetter)throw new Error(`Dataset histórico no soportado por Supabase: ${dataset}`);
   const network=dataset==="rop02"?supabaseRop02Request():typedGetter(params);
-  const task=network.then(async response=>{const value={...response,cacheHit:false,cacheLevel:"network",elapsedMs:Math.round(performance.now()-started)};remember_(key,value);await writeCachedSource(`query:${key}`,value);return value;}).finally(()=>{if(pending.get(key)===task)pending.delete(key);});
+  const task=network.then(async response=>{
+    const value={...response,cacheHit:false,cacheLevel:"network",elapsedMs:Math.round(performance.now()-started)};
+    remember_(key,value);
+    await writeCachedSource(`query:${key}`,value);
+    notifyDatasetUpdated_(dataset,key,value,params);
+    return value;
+  }).finally(()=>{if(pending.get(key)===task)pending.delete(key);});
   pending.set(key,task);return task;
 }
 
 export async function getDataset(dataset,params={}){
   const cached=await readDatasetQuery(dataset,params);
   if(cached){
-    // Stale-while-revalidate: la vista recibe IndexedDB/memoria inmediatamente.
-    // La consulta a Supabase se hace detrás y actualiza el cache para la próxima
-    // lectura sin bloquear la navegación actual.
     fetchDatasetPage(dataset,params).catch(()=>{});
     return cached;
   }
@@ -50,6 +60,16 @@ export async function getDataset(dataset,params={}){
 export const getRop02=params=>getDataset("rop02",params);
 export const getRop05=params=>getDataset("rop05",params);
 export const getRma15=params=>getDataset("rma15",params);
+export const refreshHistoricalDataset=(dataset,params={})=>fetchDatasetPage(dataset,params);
+export const HISTORICAL_DATASET_UPDATED_EVENT=HISTORICAL_UPDATED_EVENT;
+
+export async function refreshCommonHistoricalDatasets(){
+  return Promise.allSettled([
+    fetchDatasetPage("rop02",COMMON_HISTORICAL_QUERY),
+    fetchDatasetPage("rop05",COMMON_HISTORICAL_QUERY),
+    fetchDatasetPage("rma15",COMMON_HISTORICAL_QUERY),
+  ]);
+}
 
 function fullOperationalWindowParams_(params={}){
   const days=Math.max(1,Number(params.days)||7);
@@ -85,6 +105,7 @@ export const getRop02Facets=params=>getSupabaseRop02Facets(params);
 export const getRop02Rop05Control=params=>getSupabaseRop02Rop05Control(params);
 export const getRma15EquipmentUniverse=params=>getRma15EquipmentUniverseSupabase(params);
 export const getRma15OpenOtSummary=params=>getRma15OpenOtSummarySupabase(params);
+
 export async function getEquipmentHistory({equipo,desde="",hasta=""}){
   if(!String(equipo||"").trim())return{rop02:[],rop05:[],rma15:[]};
   const params={equipo,desde,hasta,limit:"all",offset:0};
