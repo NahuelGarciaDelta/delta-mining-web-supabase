@@ -57,6 +57,11 @@ export const INFORME_COSTOS_DEPS = Object.freeze({
   proyColor, sortRowsForTable, tipoEquipoCosto, toNumber, uniq
 });
 
+// En la pestaña Vehículos, la Lista Maestra se usa únicamente para identificar
+// el vehículo (Código Nuevo/Drusila, familia y propiedad). La ubicación/proyecto
+// debe provenir SIEMPRE del registro ROP02 de cada fecha. Por eso se neutralizan
+// los campos de ubicación de la Lista Maestra y no se inyectan vehículos extra
+// sin ROP02 en las tarjetas de flota.
 const buildVehicleListaIndexForRop02 = listaEquipos => {
   const base=buildVehicleListaIndex(listaEquipos);
   const sanitize=item=>item?{
