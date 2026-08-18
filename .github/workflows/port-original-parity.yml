@@ -42,3 +42,5 @@ jobs:
           git add src scripts tests vite.config.js docs
           git commit -m 'Sincronizar infraestructura con app original'
           git push origin HEAD:main
+
+# Este push existe para ejecutar el port sobre una rama que ya contiene el workflow.
