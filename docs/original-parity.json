@@ -2,6 +2,7 @@
   "sourceRepository": "NahuelGarciaDelta/delta-mining-ops",
   "sourceCommit": "8984deb215f7a007b89710fb6a8ca01810149602",
   "syncedAt": "2026-08-18",
-  "policy": "UI, filtros, vistas y lógica de dominio se mantienen en paridad con la app original. Lecturas, escrituras, autenticación y persistencia remota conservan la arquitectura Supabase de este repositorio.",
-  "notes": "InformeCostosView aplica las dos diferencias finales de la original mediante el transform Vite de paridad para evitar sustituir adaptadores Supabase no relacionados."
+  "policy": "UI, filtros, vistas, cálculos y lógica de dominio se mantienen en paridad con la app original. Lecturas, escrituras, autenticación y persistencia remota conservan la arquitectura Supabase de este repositorio.",
+  "status": "functional-parity",
+  "notes": "La lógica final de InformeCostosView se aplica en dev/build mediante el transform Vite de paridad. Los movimientos de equipos conservan la UX y el dominio de la original, pero persisten mediante RPC de Supabase."
 }
