@@ -1,0 +1,71 @@
+/* =========================================================
+   DELTA MINING OPS — MOVIMIENTOS DE EQUIPOS / TALLER CENTRAL
+   VERSION SEGURA SIN TRIGGERS
+
+   IMPORTANTE:
+   1) Reemplazá el script anterior por este archivo.
+   2) Ejecutá UNA sola vez: repararEInstalarMovimientosTaller()
+
+   Esta versión ELIMINA el trigger de 1 minuto anterior y crea la
+   hoja MOVIMIENTOS_TALLER mediante una fórmula dinámica. No ejecuta
+   procesos periódicos y no toca doGet/doPost ni la autenticación.
+   ========================================================= */
+
+var DM_TALLER_MOV_DB_ID_ = "1eEgggHdcH0YhGnmlogN63nQgStNl2xoV0bkfF_DTPYU";
+var DM_TALLER_DEST_SHEET_ = "MOVIMIENTOS_TALLER";
+
+function repararEInstalarMovimientosTaller() {
+  eliminarTriggersMovimientosTaller_();
+  var ss = SpreadsheetApp.openById(DM_TALLER_MOV_DB_ID_);
+  var sheet = ss.getSheetByName(DM_TALLER_DEST_SHEET_);
+  if (!sheet) sheet = ss.insertSheet(DM_TALLER_DEST_SHEET_);
+
+  sheet.clear();
+  var headers = [[
+    "ID","FECHA_HORA","TIPO","EQUIPO","MARCA","MODELO","PROPIEDAD",
+    "INTERNO_ORIGEN","HOROMETRO","PROYECTO_ORIGEN","PROYECTO_DESTINO",
+    "INTERNO_DESTINO","MOTIVO","OBSERVACION","USUARIO","ESTADO"
+  ]];
+  sheet.getRange(1,1,1,headers[0].length).setValues(headers)
+    .setFontWeight("bold").setBackground("#1f2937").setFontColor("#ffffff");
+  sheet.setFrozenRows(1);
+
+  var formula = '=ARRAYFORMULA(IFERROR(FILTER({' +
+    'MOVIMIENTOS_EQUIPOS!A2:A,' +
+    'MOVIMIENTOS_EQUIPOS!B2:B,' +
+    'IFERROR(REGEXEXTRACT(MOVIMIENTOS_EQUIPOS!I2:I,"\\[TIPO:([^]]*)\\]"),""),' +
+    'IFERROR(REGEXEXTRACT(MOVIMIENTOS_EQUIPOS!I2:I,"\\[EQUIPO:([^]]*)\\]"),""),' +
+    'IFERROR(REGEXEXTRACT(MOVIMIENTOS_EQUIPOS!I2:I,"\\[MARCA:([^]]*)\\]"),""),' +
+    'IFERROR(REGEXEXTRACT(MOVIMIENTOS_EQUIPOS!I2:I,"\\[MODELO:([^]]*)\\]"),""),' +
+    'IFERROR(REGEXEXTRACT(MOVIMIENTOS_EQUIPOS!I2:I,"\\[PROPIEDAD:([^]]*)\\]"),""),' +
+    'IFERROR(REGEXEXTRACT(MOVIMIENTOS_EQUIPOS!I2:I,"\\[INTERNO:([^]]*)\\]"),MOVIMIENTOS_EQUIPOS!C2:C),' +
+    'IFERROR(REGEXEXTRACT(MOVIMIENTOS_EQUIPOS!I2:I,"\\[HOROMETRO:([^]]*)\\]"),""),' +
+    'IFERROR(REGEXEXTRACT(MOVIMIENTOS_EQUIPOS!I2:I,"\\[ORIGEN:([^]]*)\\]"),MOVIMIENTOS_EQUIPOS!E2:E),' +
+    'IFERROR(REGEXEXTRACT(MOVIMIENTOS_EQUIPOS!I2:I,"\\[DESTINO:([^]]*)\\]"),MOVIMIENTOS_EQUIPOS!F2:F),' +
+    'IFERROR(REGEXEXTRACT(MOVIMIENTOS_EQUIPOS!I2:I,"\\[INTERNO_DESTINO:([^]]*)\\]"),MOVIMIENTOS_EQUIPOS!C2:C),' +
+    'IFERROR(REGEXEXTRACT(MOVIMIENTOS_EQUIPOS!I2:I,"\\[MOTIVO:([^]]*)\\]"),MOVIMIENTOS_EQUIPOS!H2:H),' +
+    'MOVIMIENTOS_EQUIPOS!I2:I,' +
+    'MOVIMIENTOS_EQUIPOS!J2:J,' +
+    'MOVIMIENTOS_EQUIPOS!L2:L' +
+    '},REGEXMATCH(MOVIMIENTOS_EQUIPOS!I2:I,"\\[DM_TALLER:1\\]")),""))';
+
+  sheet.getRange("A2").setFormula(formula);
+  sheet.getRange("B:B").setNumberFormat("dd/mm/yyyy hh:mm");
+  sheet.autoResizeColumns(1, headers[0].length);
+  SpreadsheetApp.flush();
+  return "MOVIMIENTOS_TALLER instalada sin triggers. Autenticación y backend quedan sin procesos periódicos adicionales.";
+}
+
+function eliminarTriggersMovimientosTaller_() {
+  ScriptApp.getProjectTriggers().forEach(function(trigger) {
+    var fn = trigger.getHandlerFunction();
+    if (fn === "sincronizarMovimientosTaller" || fn === "instalarMovimientosTaller") {
+      ScriptApp.deleteTrigger(trigger);
+    }
+  });
+}
+
+function desinstalarTriggerMovimientosTaller() {
+  eliminarTriggersMovimientosTaller_();
+  return "Triggers antiguos de Movimientos Taller eliminados.";
+}
