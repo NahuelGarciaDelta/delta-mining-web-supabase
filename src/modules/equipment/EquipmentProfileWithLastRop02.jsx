@@ -1,6 +1,8 @@
 import React,{useEffect,useMemo,useState} from "react";
 import EquipmentProfileView from "./EquipmentProfileView.jsx";
 import {canonicalEquipmentCode,cleanEquipmentCode} from "./equipmentCode.js";
+import {useEquipmentMovements} from "../../services/equipmentMovements.js";
+import {buildEquipmentMovementAliasMap} from "../../services/equipmentMovementsDomain.js";
 
 const sourceCode=row=>String(row?.maquina||row?.interno||row?.codigo||row?.["Codigo Int"]||row?.["Código Interno del Equipo"]||"").trim();
 const norm=value=>String(value??"").normalize("NFD").replace(/[\u0300-\u036f]/g,"").toUpperCase().replace(/[^A-Z0-9]/g,"");
@@ -27,7 +29,11 @@ const fmtDate=iso=>/^\d{4}-\d{2}-\d{2}$/.test(String(iso||""))?`${iso.slice(8,10
 
 export default function EquipmentProfileWithLastRop02(props){
   const [selectedCode,setSelectedCode]=useState(()=>cleanEquipmentCode(props.initialCode||""));
+  const {movements:sharedMovements}=useEquipmentMovements(props.rop02All,["equipmentProfile"]);
 
+  // Una fila de Lista Maestra puede contener código nuevo, Drusila, interno y viejo.
+  // Todos esos identificadores representan UN solo equipo. El primer código de la
+  // fila (Código nuevo) es la identidad preferida de la ficha.
   const codeAliases=useMemo(()=>{
     const aliases=new Map();
     for(const row of Array.isArray(props.listaEquipos)?props.listaEquipos:[]){
@@ -41,12 +47,28 @@ export default function EquipmentProfileWithLastRop02(props){
     }
     return aliases;
   },[props.listaEquipos]);
+  const movementAliases=useMemo(()=>buildEquipmentMovementAliasMap(sharedMovements),[sharedMovements]);
 
   const resolveCode=React.useCallback(raw=>{
-    const cleaned=cleanEquipmentCode(raw);
-    return codeAliases.get(canonicalEquipmentCode(cleaned))||cleaned;
-  },[codeAliases]);
+    let current=cleanEquipmentCode(raw);
+    const seen=new Set();
+    for(let i=0;i<10;i++){
+      const key=canonicalEquipmentCode(current);
+      if(!key||seen.has(key))break;
+      seen.add(key);
+      const masterPreferred=codeAliases.get(key)||current;
+      const masterKey=canonicalEquipmentCode(masterPreferred);
+      const moved=movementAliases.get(masterKey)||movementAliases.get(key);
+      const next=cleanEquipmentCode(moved||masterPreferred);
+      if(!next||canonicalEquipmentCode(next)===key){current=next||current;break;}
+      current=next;
+    }
+    return current;
+  },[codeAliases,movementAliases]);
 
+  // Normalizamos las fuentes antes de entregarlas a EquipmentProfileView. Así el
+  // historial ROP02/ROP05/RMA15 de códigos viejos se combina bajo el mismo interno
+  // y el selector no crea dos opciones visuales para la misma máquina.
   const normalizeRows=React.useCallback(rows=>(Array.isArray(rows)?rows:[]).map(row=>{
     const raw=sourceCode(row);
     const preferred=resolveCode(raw);
@@ -59,7 +81,9 @@ export default function EquipmentProfileWithLastRop02(props){
   const normalizedRma15=useMemo(()=>normalizeRows(props.rma15),[props.rma15,normalizeRows]);
   const normalizedInitialCode=resolveCode(props.initialCode||"");
 
-  useEffect(()=>{if(props.initialCode)setSelectedCode(normalizedInitialCode);},[props.initialCode,normalizedInitialCode]);
+  useEffect(()=>{
+    if(props.initialCode)setSelectedCode(normalizedInitialCode);
+  },[props.initialCode,normalizedInitialCode]);
 
   const latestByEquipment=useMemo(()=>{
     const latest=new Map();
@@ -105,6 +129,7 @@ export default function EquipmentProfileWithLastRop02(props){
       if(!header)return;
       const left=header.firstElementChild;
       if(!left)return;
+
       let node=left.querySelector("[data-dm-last-rop02]");
       if(!node){
         node=document.createElement("div");
@@ -117,6 +142,7 @@ export default function EquipmentProfileWithLastRop02(props){
       }
       const nextText=`Último registro ROP02: ${latestDate?fmtDate(latestDate):"Sin registros"}`;
       if(node.textContent!==nextText)node.textContent=nextText;
+
       const metaRows=[...left.querySelectorAll(":scope > div")].filter(el=>el.querySelectorAll(":scope > span").length>=4);
       const metaRow=metaRows[metaRows.length-1];
       if(metaRow){
