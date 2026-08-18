@@ -62,9 +62,6 @@ export function isCompactorEquipmentCode(value) {
 
 export function isTruckEquipmentCode(value) {
   const code = canonicalEquipmentCode(value);
-  // CAT no es un prefijo inequívoco: CAT es el generador y CAT-0073 es un
-  // camión tractor. La Familia/Tipo resuelve esos casos; el código queda como
-  // respaldo únicamente para prefijos que sí representan camiones siempre.
   return ["CAC", "CAR", "CAV", "CAA"].some(prefix => code.startsWith(prefix));
 }
 
@@ -76,14 +73,15 @@ const normalizeEquipmentType = value => String(value || "")
   .toUpperCase();
 
 const firstEquipmentFamilyWord = value => normalizeEquipmentType(value).split(" ")[0] || "";
+const startsWithEquipmentCodePrefix = (value, prefixes) => {
+  const code = canonicalEquipmentCode(value);
+  return prefixes.some(prefix => code.startsWith(prefix));
+};
 
 export function maintenanceCostTypeFromFamily({ code = "", family = "", type = "", category = "", description = "" } = {}) {
   const normalizedFamily = normalizeEquipmentType(family);
   const semanticType = normalizedFamily || normalizeEquipmentType(type || category || description);
   const firstWord = firstEquipmentFamilyWord(semanticType);
-
-  // Familia es la fuente principal. CAMIONETA debe evaluarse antes que CAMION
-  // y la palabra debe ser la primera, tal como está definida en Lista Maestra.
   if (firstWord === "CAMIONETA") return "CAMIONETAS";
   if (firstWord === "CAMION") return "CAMIONES";
   if (isCompactorEquipment({ code, type: semanticType })) return "COMPACTACION";
@@ -93,20 +91,15 @@ export function maintenanceCostTypeFromFamily({ code = "", family = "", type = "
   if (semanticType.includes("MOTONIVELADORA")) return "MOTONIVELADORA";
   if (semanticType.includes("TOPADORA")) return "TOPADORA";
   if (semanticType.includes("RETROPALA")) return "RETROPALA";
-
-  // Si hay Familia y no es vehicular, se respeta aunque el prefijo del interno
-  // se parezca al de un camión (por ejemplo CAT con Familia GENERADOR).
   if (normalizedFamily) return "OTROS";
-
-  const normalizedCode = cleanEquipmentCode(code);
   if (isTruckEquipmentCode(code) || firstEquipmentFamilyWord(type || category || description) === "CAMION") return "CAMIONES";
-  if (/^CTA/.test(normalizedCode) || /^AG[0-9]/.test(normalizedCode) || /^AH[0-9]/.test(normalizedCode)) return "CAMIONETAS";
-  if (/^MCA-/.test(normalizedCode) || /^MNC-/.test(normalizedCode)) return "MINICARGADORA";
-  if (/^EXC-/.test(normalizedCode)) return "EXCAVADORA";
-  if (/^PCA-/.test(normalizedCode) || /^CFN-/.test(normalizedCode)) return "CARGADORA FRONTAL";
-  if (/^MOT-/.test(normalizedCode)) return "MOTONIVELADORA";
-  if (/^TOP-/.test(normalizedCode)) return "TOPADORA";
-  if (/^RTP-/.test(normalizedCode)) return "RETROPALA";
+  if (startsWithEquipmentCodePrefix(code,["CTA"]) || /^AG[0-9]/.test(canonicalEquipmentCode(code)) || /^AH[0-9]/.test(canonicalEquipmentCode(code))) return "CAMIONETAS";
+  if (startsWithEquipmentCodePrefix(code,["MCA","MNC"])) return "MINICARGADORA";
+  if (startsWithEquipmentCodePrefix(code,["EXC"])) return "EXCAVADORA";
+  if (startsWithEquipmentCodePrefix(code,["PCA","CFN"])) return "CARGADORA FRONTAL";
+  if (startsWithEquipmentCodePrefix(code,["MOT"])) return "MOTONIVELADORA";
+  if (startsWithEquipmentCodePrefix(code,["TOP"])) return "TOPADORA";
+  if (startsWithEquipmentCodePrefix(code,["RTP"])) return "RETROPALA";
   return "OTROS";
 }
 
@@ -126,8 +119,9 @@ export function isMaintenanceCostMachine({ code = "", family = "", type = "", ca
   }
   if (isCompactorEquipment({ code, type, category, description })) return true;
   const normalized = normalizeEquipmentType(type || category || description);
-  return ["EXCAVADORA", "TOPADORA", "MOTONIVELADORA", "CARGADORA", "CARGADOR FRONTAL", "RETROPALA", "MINICARGADORA"]
-    .some(machineType => normalized.includes(machineType));
+  if (["EXCAVADORA", "TOPADORA", "MOTONIVELADORA", "CARGADORA", "CARGADOR FRONTAL", "RETROPALA", "MINICARGADORA"]
+    .some(machineType => normalized.includes(machineType))) return true;
+  return startsWithEquipmentCodePrefix(code,["EXC","PCA","CFN","MOT","TOP","RTP","MCA","MNC","RPC","ROD"]);
 }
 
 export function isMaintenanceCostTruck({ code = "", family = "", type = "", category = "", description = "" } = {}) {
