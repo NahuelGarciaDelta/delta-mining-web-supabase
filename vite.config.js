@@ -1,12 +1,11 @@
 import { defineConfig } from 'vite'
 import react from '@vitejs/plugin-react'
+import { tallerCentralNavigationVitePlugin } from './scripts/taller-central-navigation-vite-plugin.mjs'
 
-// La app Supabase ya contiene directamente los cambios de UI y paginación
-// sincronizados desde la original. No se aplica el transform histórico de
-// progressive-rows porque dependía de patrones exactos de una versión anterior
-// de Abastecimiento y podía dejar el módulo transformado de forma parcial.
+// La app Supabase contiene directamente la paginación progresiva; solo se aplica
+// el transform de navegación de Taller Central que replica la app original.
 export default defineConfig({
-  plugins: [react()],
+  plugins: [tallerCentralNavigationVitePlugin(), react()],
   server: {
     host: '0.0.0.0'
   },
