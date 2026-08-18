@@ -1,9 +1,12 @@
 import { defineConfig } from 'vite'
 import react from '@vitejs/plugin-react'
-import { progressiveRowsVitePlugin } from './scripts/progressive-rows-vite-plugin.mjs'
 
+// La app Supabase ya contiene directamente los cambios de UI y paginación
+// sincronizados desde la original. No se aplica el transform histórico de
+// progressive-rows porque dependía de patrones exactos de una versión anterior
+// de Abastecimiento y podía dejar el módulo transformado de forma parcial.
 export default defineConfig({
-  plugins: [progressiveRowsVitePlugin(), react()],
+  plugins: [react()],
   server: {
     host: '0.0.0.0'
   },
