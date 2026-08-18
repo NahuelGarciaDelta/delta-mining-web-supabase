@@ -12,6 +12,13 @@ function applyCommon(query,p,dateColumn){
   return query;
 }
 
+function canonicalSummaryEquipmentCode_(value){
+  let raw=String(value||"").trim().toUpperCase().replace(/\s*\(.*?\)/g,"").replace(/[-_\s]+JM$/i,"").replace(/[^A-Z0-9]/g,"");
+  if(raw==="RCP0039")raw="RPC0039";
+  const match=raw.match(/^([A-Z]{2,4})(\d{1,6})$/);
+  return match?`${match[1]}-${match[2].padStart(4,"0")}`:String(value||"").trim().toUpperCase();
+}
+
 function rop02Legacy(row={}){
   return{
     Fecha:row.fecha,
@@ -144,5 +151,6 @@ export async function getRma15EquipmentUniverseSupabase(params={}){
 export async function getRma15OpenOtSummarySupabase(){
   const {data,error}=await requireSupabase().rpc("rma15_open_ot_summary",{});
   if(error)throw new Error(`Supabase rma15_open_ot_summary: ${error.message}`);
-  return{ok:true,data:data||[],total:(data||[]).length,source:"supabase"};
+  const rows=(data||[]).map(row=>({...row,interno:canonicalSummaryEquipmentCode_(row?.interno)}));
+  return{ok:true,data:rows,total:rows.length,source:"supabase"};
 }
