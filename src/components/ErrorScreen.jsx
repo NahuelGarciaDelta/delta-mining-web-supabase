@@ -1,6 +1,13 @@
 import React from "react";
 import { C, Icon } from "./ui/index.jsx";
 
+const normalizeSource=source=>{
+  const value=String(source||"").trim();
+  // App.jsx conserva todavía este nombre histórico en el fallback global, pero
+  // las fuentes operativas de la versión actual se cargan desde Supabase.
+  return value==="Apps Script"?"Supabase":value||"Datos";
+};
+
 export default function ErrorScreen({errors=[],onRetry}){
   return(
     <div style={{display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",height:"60vh",gap:20,textAlign:"center",padding:24}}>
@@ -12,7 +19,7 @@ export default function ErrorScreen({errors=[],onRetry}){
         <div style={{display:"flex",flexDirection:"column",gap:6,maxWidth:480}}>
           {errors.map((e,i)=>(
             <div key={i} style={{background:C.redDim,border:`1px solid ${C.red}33`,borderRadius:8,padding:"10px 14px",textAlign:"left"}}>
-              <div style={{fontSize:11,color:C.red,fontWeight:600}}>{e.source}</div>
+              <div style={{fontSize:11,color:C.red,fontWeight:600}}>{normalizeSource(e.source)}</div>
               <div style={{fontSize:12,color:C.textSub,marginTop:2}}>{e.message}</div>
             </div>
           ))}
