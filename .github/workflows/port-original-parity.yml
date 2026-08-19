@@ -1,46 +1,41 @@
-name: Port original parity
+name: Validate Supabase parity
 
 on:
   push:
-    paths:
-      - '.github/workflows/port-original-parity.yml'
-      - 'scripts/port-original-parity.mjs'
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+  schedule:
+    - cron: '17 * * * *'
 
 permissions:
-  contents: write
+  contents: read
 
 jobs:
-  port:
+  verify:
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     steps:
       - name: Checkout Supabase app
         uses: actions/checkout@v4
         with:
-          fetch-depth: 0
+          fetch-depth: 1
+
       - name: Setup Node
         uses: actions/setup-node@v4
         with:
           node-version: 22
           cache: npm
-      - name: Port functional parity
-        run: node scripts/port-original-parity.mjs
+
       - name: Install dependencies
         run: npm ci
-      - name: Validate
-        run: |
-          npm run check
-          npm run validate
-          npm run build
-      - name: Commit parity port
-        run: |
-          if git diff --quiet && git diff --cached --quiet; then
-            echo 'No parity changes to commit.'
-            exit 0
-          fi
-          git config user.name 'github-actions[bot]'
-          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
-          git add src scripts tests vite.config.js docs
-          git commit -m 'Sincronizar infraestructura con app original'
-          git push origin HEAD:main
 
-# Este push existe para ejecutar el port sobre una rama que ya contiene el workflow.
+      - name: Validate imports, security, ESLint and tests
+        run: npm run validate
+
+      - name: Build production bundle
+        run: npm run build
+
+      - name: Audit parity against delta-mining-ops
+        run: npm run audit:parity
