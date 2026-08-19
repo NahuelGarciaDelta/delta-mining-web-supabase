@@ -1,8 +1,8 @@
 {
   "sourceRepository": "NahuelGarciaDelta/delta-mining-ops",
-  "sourceCommit": "fe2005e006cd5648383bdb18db2941b74dd97570",
+  "sourceCommit": "589f98dabd0a14f1d8bec13f59edb9cf7bff1c32",
   "syncedAt": "2026-08-19",
   "policy": "UI, filtros, pestañas, navegación, cálculos, permisos, vistas y lógica de dominio se mantienen en paridad con la app original. La única diferencia deliberada es la capa de datos: la versión Supabase lee y escribe mediante Supabase y conserva la sincronización secundaria con Sheets.",
   "status": "functional-parity-current",
-  "notes": "Baseline actualizado al main vigente de la app original. Incluye Código anterior en Ficha Única, correlación histórica robusta de aliases, selector desplegable por encima del layout, filtro de proyecto integrado, layout vigente de Ficha Única y versión 3.9.11. La auditoría exige igualdad exacta sólo en archivos backend-agnostic y valida contratos funcionales en pantallas/adapters que difieren deliberadamente por Supabase."
+  "notes": "Baseline actualizado al main vigente de la app original. Incluye Código anterior y aliases históricos en Ficha Única, movilizaciones de Taller con cambio de interno, filtro de proyecto multiselección aplicado a todas las subpestañas, deduplicación del último ROP02, ubicación actual y último proyecto, y patente visible para vehículos. La versión Supabase conserva sus servicios/RPC Supabase y no activa el transform legacy de progressive rows de Apps Script."
 }
