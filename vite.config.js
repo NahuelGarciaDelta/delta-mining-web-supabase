@@ -7,10 +7,13 @@ import { vehicleKmMaintenanceVitePlugin } from './scripts/vehicle-km-maintenance
 import { pmVehicleScopeVitePlugin } from './scripts/pm-vehicle-scope-vite-plugin.mjs'
 import { pmVehicleDisplayVitePlugin } from './scripts/pm-vehicle-display-vite-plugin.mjs'
 import { equipmentProfileCodeHistoryVitePlugin } from './scripts/equipment-profile-code-history-vite-plugin.mjs'
+import { equipmentProfileAliasProjectMultiselectVitePlugin } from './scripts/equipment-profile-alias-project-multiselect-vite-plugin.mjs'
+import { equipmentProfileDeduplicateLastRop02VitePlugin } from './scripts/equipment-profile-deduplicate-last-rop02-vite-plugin.mjs'
+import { equipmentProfileLocationVehicleLabelVitePlugin } from './scripts/equipment-profile-location-vehicle-label-vite-plugin.mjs'
 import { equipmentProfileLayoutVitePlugin } from './scripts/equipment-profile-layout-vite-plugin.mjs'
 
 export default defineConfig({
-  plugins: [intelligentRefreshVitePlugin(), vehicleKmMaintenanceVitePlugin(), pmVehicleScopeVitePlugin(), pmVehicleDisplayVitePlugin(), equipmentProfileCodeHistoryVitePlugin(), equipmentProfileLayoutVitePlugin(), tallerCentralNavigationVitePlugin(), atrasoIchcFixesVitePlugin(), react()],
+  plugins: [intelligentRefreshVitePlugin(), vehicleKmMaintenanceVitePlugin(), pmVehicleScopeVitePlugin(), pmVehicleDisplayVitePlugin(), equipmentProfileCodeHistoryVitePlugin(), equipmentProfileAliasProjectMultiselectVitePlugin(), equipmentProfileDeduplicateLastRop02VitePlugin(), equipmentProfileLocationVehicleLabelVitePlugin(), equipmentProfileLayoutVitePlugin(), tallerCentralNavigationVitePlugin(), atrasoIchcFixesVitePlugin(), react()],
   server: { host: '0.0.0.0' },
   build: {
     chunkSizeWarningLimit: 900,
