@@ -61,6 +61,24 @@ const forbidden=[
   /script\.google\.com\/macros/g,
   /VITE_APPS_SCRIPT_URL/g
 ];
+
+// La app Supabase conserva Apps Script únicamente como adaptador de autenticación
+// y fallback de compatibilidad. Estas referencias son intencionales y están
+// aisladas en dos archivos; el resto de src debe permanecer libre de Apps Script.
+const appsScriptAllowlist=new Map([
+  ['src/config/app.js',new Set([
+    '/script\\.google\\.com\\/macros/g',
+    '/VITE_APPS_SCRIPT_URL/g'
+  ])],
+  ['src/services/appsScriptApi.js',new Set([
+    '/VITE_APPS_SCRIPT_URL/g'
+  ])]
+]);
+
+function isAllowedAppsScriptReference(rel,pattern){
+  return appsScriptAllowlist.get(rel)?.has(String(pattern))===true;
+}
+
 function walk(dir){
   for(const entry of fs.readdirSync(dir,{withFileTypes:true})){
     const full=path.join(dir,entry.name);
@@ -68,7 +86,12 @@ function walk(dir){
     else if(/\.(js|jsx|mjs)$/.test(entry.name)){
       const rel=path.relative(root,full).replace(/\\/g,'/');
       const text=fs.readFileSync(full,'utf8');
-      for(const pattern of forbidden){pattern.lastIndex=0;if(pattern.test(text))fail(`${rel} contiene dependencia prohibida de Apps Script: ${pattern}`);}
+      for(const pattern of forbidden){
+        pattern.lastIndex=0;
+        if(pattern.test(text)&&!isAllowedAppsScriptReference(rel,pattern)){
+          fail(`${rel} contiene dependencia prohibida de Apps Script: ${pattern}`);
+        }
+      }
     }
   }
 }
