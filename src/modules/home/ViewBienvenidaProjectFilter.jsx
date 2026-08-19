@@ -20,6 +20,8 @@ function readInitialSelection(){
       const parsed=JSON.parse(old);
       if(Array.isArray(parsed)){
         const clean=[...new Set(parsed.map(v=>String(v||"").trim().toUpperCase()).filter(Boolean))];
+        // La selección histórica con los cuatro proyectos existentes equivalía a “Todos”.
+        // Se migra a modo dinámico para que futuros proyectos entren automáticamente.
         if(clean.length===LEGACY_PROJECTS.size&&clean.every(v=>LEGACY_PROJECTS.has(v)))return null;
         return clean;
       }
@@ -29,6 +31,8 @@ function readInitialSelection(){
 }
 
 export default function ViewBienvenidaProjectFilter(props){
+  // null = Todos. De esta forma, si mañana Apps Script agrega un proyecto nuevo,
+  // entra automáticamente sin requerir modificar React ni el localStorage del usuario.
   const [selection,setSelection]=React.useState(readInitialSelection);
   const [portalHost,setPortalHost]=React.useState(null);
   const [open,setOpen]=React.useState(false);
@@ -40,6 +44,8 @@ export default function ViewBienvenidaProjectFilter(props){
     ...projectValues.map(value=>({value,label:projectLabel(value)})),
   ],[projectValues]);
 
+  // Si una selección explícita contiene proyectos que ya no están en los datasets,
+  // se limpia sin impedir que nuevos proyectos aparezcan en el selector.
   const selectedValues=React.useMemo(()=>{
     if(selection===null)return projectValues;
     const available=new Set(projectValues);
