@@ -11,6 +11,7 @@ import {equipmentProfileCodeHistoryVitePlugin} from './equipment-profile-code-hi
 import {equipmentProfileAliasProjectMultiselectVitePlugin} from './equipment-profile-alias-project-multiselect-vite-plugin.mjs';
 import {equipmentProfileDeduplicateLastRop02VitePlugin} from './equipment-profile-deduplicate-last-rop02-vite-plugin.mjs';
 import {equipmentProfileLocationVehicleLabelVitePlugin} from './equipment-profile-location-vehicle-label-vite-plugin.mjs';
+import {equipmentProfileVehicleArrowsVitePlugin} from './equipment-profile-vehicle-arrows-vite-plugin.mjs';
 import {equipmentProfileLayoutVitePlugin} from './equipment-profile-layout-vite-plugin.mjs';
 
 const root=process.cwd();
@@ -23,6 +24,7 @@ const plugins=[
   equipmentProfileAliasProjectMultiselectVitePlugin(),
   equipmentProfileDeduplicateLastRop02VitePlugin(),
   equipmentProfileLocationVehicleLabelVitePlugin(),
+  equipmentProfileVehicleArrowsVitePlugin(),
   equipmentProfileLayoutVitePlugin(),
   tallerCentralNavigationVitePlugin(),
   atrasoIchcFixesVitePlugin(),
