@@ -2,18 +2,17 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import {mergeEquipmentMovements} from "../src/modules/equipment/equipmentMovementHistory.js";
 
-test("conserva los movimientos inferidos de TOP-0072",()=>{
+test("ROP02 establece solo el primer proyecto conocido del equipo",()=>{
   const result=mergeEquipmentMovements([
     {maquina:"TOP-0072",fecha:"2026-06-20",proyecto:"EL ZORRO"},
     {maquina:"TOP-0072",fecha:"2026-07-21",proyecto:"FDS"},
   ],[],"TOP0072");
-  assert.deepEqual(result.map(x=>[x.fecha,x.desde,x.hasta]),[
-    ["21/07/2026","El Zorro","Filo del Sol"],
-    ["20/06/2026","—","El Zorro"],
+  assert.deepEqual(result.map(x=>[x.fecha,x.desde,x.hasta,x.source]),[
+    ["20/06/2026","—","El Zorro","ROP02"],
   ]);
 });
 
-test("prioriza el movimiento persistido equivalente y conserva movimientos inactivos",()=>{
+test("los cambios posteriores de proyecto provienen de Movimiento de equipos",()=>{
   const result=mergeEquipmentMovements([
     {maquina:"TOP-0072",fecha:"2026-06-20",proyecto:"EL ZORRO"},
     {maquina:"TOP-0072",fecha:"2026-07-21",proyecto:"FILO DEL SOL"},
@@ -23,6 +22,7 @@ test("prioriza el movimiento persistido equivalente y conserva movimientos inact
   assert.equal(result.filter(x=>x.desdeRaw==="EL ZORRO"&&x.hastaRaw==="FILO DEL SOL").length,1);
   assert.equal(result[0].source,"MANUAL");
   assert.equal(result[0].usuario,"usuario@delta.com");
+  assert.equal(result.at(-1).source,"ROP02");
 });
 
 test("Bajó a San Juan usa destino normalizado",()=>{
