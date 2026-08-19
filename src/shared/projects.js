@@ -16,12 +16,16 @@ const ALIASES=new Map([
 export function normalizeProjectName(value,{empty="S/D"}={}){
   const key=strip(value);
   if(!key)return empty;
+  // Importante: sólo aliases explícitos. Un proyecto futuro como FILO NORTE
+  // debe conservarse como proyecto independiente y nunca caer en FILO DEL SOL.
   return ALIASES.get(key)||key;
 }
 
 export function projectFromRow(row){
   if(!row)return "S/D";
-  return normalizeProjectName(row.proyecto??row.Proyecto??row.lugar??row.Lugar??row["Proyecto/Lugar"]??row._proyectoForzado??row.centroCosto??row.centro_costo??"");
+  return normalizeProjectName(
+    row.proyecto??row.Proyecto??row.lugar??row.Lugar??row["Proyecto/Lugar"]??row._proyectoForzado??row.centroCosto??row.centro_costo??""
+  );
 }
 
 export function collectProjects(...sources){
