@@ -16,7 +16,7 @@ export default [
         setInterval: "readonly", clearInterval: "readonly", console: "readonly", structuredClone: "readonly",
         AbortController: "readonly", CustomEvent: "readonly", Event: "readonly", Worker: "readonly",
         MutationObserver: "readonly", ResizeObserver: "readonly", IntersectionObserver: "readonly",
-        caches: "readonly", indexedDB: "readonly", self: "readonly", process: "readonly",
+        caches: "readonly", indexedDB: "readonly", self: "readonly", process: "readonly", performance: "readonly",
         requestAnimationFrame: "readonly", cancelAnimationFrame: "readonly"
       }
     },
