@@ -51,31 +51,35 @@ export function useEquipmentMovements(rop02Rows=[],views=[]){
   const[tallerRows,setTallerRows]=useState(()=>["BAJA","MOVILIZACION","CAMBIO_EQUIPO"].flatMap(type=>getCachedTallerMovements(type)));
   const viewsKey=JSON.stringify(views);
   const wantsTallerAtraso=useMemo(()=>Array.isArray(views)&&views.some(view=>String(view||"").toLowerCase().includes("atraso")),[viewsKey]);
-  const loadTallerAtraso=useCallback(async()=>{if(!wantsTallerAtraso)return[];try{const rows=await getAllTallerMovements();const relevant=rows.filter(row=>TALLER_ATRASO_TYPES.has(String(row?.TIPO||"").toUpperCase()));setTallerRows(prev=>relevant.length?relevant:prev);return relevant;}catch(_){return[];}},[wantsTallerAtraso]);
+  const wantsTallerProfile=useMemo(()=>Array.isArray(views)&&views.some(view=>String(view||"").toLowerCase().includes("equipmentprofile")),[viewsKey]);
+  const wantsTaller=wantsTallerAtraso||wantsTallerProfile;
+  const loadTaller=useCallback(async()=>{if(!wantsTaller)return[];try{const rows=await getAllTallerMovements();const relevant=rows.filter(row=>TALLER_ATRASO_TYPES.has(String(row?.TIPO||"").toUpperCase()));setTallerRows(prev=>relevant.length?relevant:prev);return relevant;}catch(_){return[];}},[wantsTaller]);
 
   useEffect(()=>{listeners.add(setSnapshot);loadEquipmentMovements().catch(()=>{});return()=>listeners.delete(setSnapshot)},[]);
   useEffect(()=>registerRefreshTask("equipment-movements",()=>loadEquipmentMovements({revalidate:true}),{views,priority:15}),[viewsKey]);
-  useEffect(()=>{if(wantsTallerAtraso)loadTallerAtraso();},[wantsTallerAtraso,loadTallerAtraso]);
-  useEffect(()=>wantsTallerAtraso?registerRefreshTask("taller-movements-atraso",loadTallerAtraso,{views,priority:16}):()=>{},[wantsTallerAtraso,viewsKey,loadTallerAtraso]);
+  useEffect(()=>{if(wantsTaller)loadTaller();},[wantsTaller,loadTaller]);
+  useEffect(()=>wantsTaller?registerRefreshTask("taller-movements-shared",loadTaller,{views,priority:16}):()=>{},[wantsTaller,viewsKey,loadTaller]);
 
   const rop02Index=useMemo(()=>{const latest=new Map(),dates=new Map();for(const row of Array.isArray(rop02Rows)?rop02Rows:[]){const code=normalizeEquipmentMovementCode(row?.maquina||row?._internoRaw||row?.interno);const project=normalizeRop02Project(row?.proyecto||row?.lugar);const date=toIsoDate_(row?.fecha);const key=equipmentProjectKey(code,project);if(!code||!project||!date)continue;if(!latest.has(key)||date>latest.get(key))latest.set(key,date);if(!dates.has(key))dates.set(key,[]);dates.get(key).push(date);}dates.forEach((arr,key)=>dates.set(key,[...new Set(arr)].sort()));return{latest,dates};},[rop02Rows]);
   const latestRop02ByEquipmentProject=rop02Index.latest;
 
   const tallerCanonical=useMemo(()=>{
-    if(!wantsTallerAtraso)return[];
+    if(!wantsTaller)return[];
     return (Array.isArray(tallerRows)?tallerRows:[]).map((row,index)=>{
       if(!tallerRowIsActive_(row))return null;
       const type=String(field_(row,"TIPO","tipo","TIPO_MOVIMIENTO","tipoMovimiento")||"").trim().toUpperCase();if(!TALLER_ATRASO_TYPES.has(type))return null;
-      const interno=String(field_(row,"INTERNO_ORIGEN","internoOrigen","INTERNO","interno")||"").trim();const code=normalizeEquipmentMovementCode(interno);const project=normalizeRop02Project(field_(row,"PROYECTO_ORIGEN","proyectoOrigen","ORIGEN","origen"));const movementDate=toIsoDate_(field_(row,"FECHA_HORA","fechaHora","FECHA","fecha"));if(!code||!project||!movementDate)return null;
-      const key=equipmentProjectKey(code,project);const history=rop02Index.dates.get(key)||[];let fechaUltimoRop02="";for(const date of history){if(date<=movementDate)fechaUltimoRop02=date;else break;}if(!fechaUltimoRop02)return null;
+      const interno=String(field_(row,"INTERNO_ORIGEN","internoOrigen","INTERNO","interno")||"").trim();
+      const internoDestino=String(field_(row,"INTERNO_DESTINO","internoDestino")||"").trim();
+      const code=normalizeEquipmentMovementCode(interno);const project=normalizeRop02Project(field_(row,"PROYECTO_ORIGEN","proyectoOrigen","ORIGEN","origen"));const movementDate=toIsoDate_(field_(row,"FECHA_HORA","fechaHora","FECHA","fecha"));if(!code||!project||!movementDate)return null;
+      const key=equipmentProjectKey(code,project);const history=rop02Index.dates.get(key)||[];let fechaUltimoRop02="";for(const date of history){if(date<=movementDate)fechaUltimoRop02=date;else break;}if(!fechaUltimoRop02&&wantsTallerAtraso&&!wantsTallerProfile)return null;
       const rawId=String(field_(row,"ID","id")||`${code}_${project}_${movementDate}_${index}`);
-      return{id:`taller:${rawId}`,interno:interno||code,internoNormalizado:code,proyectoOrigen:project,proyectoDestino:normalizeRop02Project(field_(row,"PROYECTO_DESTINO","proyectoDestino","DESTINO","destino"))||String(field_(row,"PROYECTO_DESTINO","proyectoDestino","DESTINO","destino")||"").trim(),tipoMovimiento:`TALLER_${type}`,motivo:String(field_(row,"MOTIVO","motivo")||type.replace(/_/g," ")).trim(),observacion:String(field_(row,"OBSERVACION","observacion")||"").trim(),usuario:String(field_(row,"USUARIO","usuario")||"").trim(),fechaHora:movementDate,fechaUltimoRop02,activo:true,estado:"ACTIVO"};
+      return{id:`taller:${rawId}`,interno:interno||code,internoNormalizado:code,internoDestino,proyectoOrigen:project,proyectoDestino:normalizeRop02Project(field_(row,"PROYECTO_DESTINO","proyectoDestino","DESTINO","destino"))||String(field_(row,"PROYECTO_DESTINO","proyectoDestino","DESTINO","destino")||"").trim(),tipoMovimiento:`TALLER_${type}`,motivo:String(field_(row,"MOTIVO","motivo")||type.replace(/_/g," ")).trim(),observacion:String(field_(row,"OBSERVACION","observacion")||"").trim(),usuario:String(field_(row,"USUARIO","usuario")||"").trim(),fechaHora:movementDate,fechaUltimoRop02,activo:true,estado:"ACTIVO"};
     }).filter(Boolean);
-  },[wantsTallerAtraso,tallerRows,rop02Index]);
+  },[wantsTaller,wantsTallerAtraso,wantsTallerProfile,tallerRows,rop02Index]);
 
   const combinedMovements=useMemo(()=>[...(Array.isArray(snapshot.data)?snapshot.data:[]),...tallerCanonical],[snapshot.data,tallerCanonical]);
   const activeMovementByEquipment=useMemo(()=>getMovimientoVigentePorEquipo(combinedMovements,latestRop02ByEquipmentProject),[combinedMovements,latestRop02ByEquipmentProject]);
   const historicalMovementMap=useMemo(()=>{const map=new Map();for(const movement of combinedMovements){const estado=String(movement?.estado||"").toUpperCase();if(movement?.activo===false||["CANCELADO","ELIMINADO"].includes(estado)||!toIsoDate_(movement?.fechaUltimoRop02))continue;map.set(`history:${movement?.id||map.size}`,movement);}return map;},[combinedMovements]);
   const admitidos=useMemo(()=>({...movementsToAtrasoMap(historicalMovementMap),...movementsToAtrasoMap(activeMovementByEquipment)}),[historicalMovementMap,activeMovementByEquipment]);
-  return{...snapshot,loading:Boolean(snapshot.loading)||!snapshot.loaded,movements:snapshot.data,activeMovementByEquipment,admitidos,reload:useCallback(()=>loadEquipmentMovements({force:true}),[])};
+  return{...snapshot,loading:Boolean(snapshot.loading)||!snapshot.loaded,movements:wantsTallerProfile?combinedMovements:snapshot.data,activeMovementByEquipment,admitidos,reload:useCallback(()=>loadEquipmentMovements({force:true}),[])};
 }
