@@ -5,7 +5,6 @@ import {
   dmProjectMatches, matchMulti, multiIncludes, multiIsAll, normalizeMultiValue, sortRowsForTable
 } from "../components/ui/index.jsx";
 import CalendarPeriodMonthYear from "../components/CalendarPeriodMonthYear.jsx";
-import { APPS_SCRIPT_URL } from "./app.js";
 import { appAlert, appConfirm } from "../services/dialogService.js";
 import { postAddListaEquipo, postBulkUpdateListaEquipos, postUpdateListaEquipo, postUpdateROP02Row } from "../services/writeActions.js";
 import { positionTip } from "../shared/dom.js";
@@ -57,11 +56,6 @@ export const INFORME_COSTOS_DEPS = Object.freeze({
   proyColor, sortRowsForTable, tipoEquipoCosto, toNumber, uniq
 });
 
-// En la pestaña Vehículos, la Lista Maestra se usa únicamente para identificar
-// el vehículo (Código Nuevo/Drusila, familia y propiedad). La ubicación/proyecto
-// debe provenir SIEMPRE del registro ROP02 de cada fecha. Por eso se neutralizan
-// los campos de ubicación de la Lista Maestra y no se inyectan vehículos extra
-// sin ROP02 en las tarjetas de flota.
 const buildVehicleListaIndexForRop02 = listaEquipos => {
   const base=buildVehicleListaIndex(listaEquipos);
   const sanitize=item=>item?{
@@ -98,18 +92,18 @@ export const createOficinaTecnicaDeps = BlockingDataLoader => Object.freeze({
 });
 
 export const MANTENIMIENTO_DEPS = Object.freeze({
-  APPS_SCRIPT_URL, C, Card, Badge, LoadingMotoniveladora, MultiSel, Sel, DateIn, PeriodMonthYear:CalendarPeriodMonthYear, TabBtn, StatCard, SortableTH, BtnExcel, Icon,
+  C, Card, Badge, LoadingMotoniveladora, MultiSel, Sel, DateIn, PeriodMonthYear:CalendarPeriodMonthYear, TabBtn, StatCard, SortableTH, BtnExcel, Icon,
   fmtNum, fmtUSD, fmtFecha, normDate, uniq, matchMulti, multiIsAll, tipoMatchMachineROP05,
   normalizeInsumoCode, positionTip, sortRowsForTable, appAlert, appConfirm, proyColor, getValue,
   generarExcelMantenimiento, ROP05_TIPOS_MAQUINA, CodeMultiSearch
 });
 
 export const ABASTECIMIENTO_DEPS = Object.freeze({
-  APPS_SCRIPT_URL, C, Card, DateIn, Icon, LoadingMotoniveladora, MultiSel, PeriodMonthYear:CalendarPeriodMonthYear,
+  C, Card, DateIn, Icon, LoadingMotoniveladora, MultiSel, PeriodMonthYear:CalendarPeriodMonthYear,
   StatCard, TabBtn, appAlert, appConfirm, dmProjectMatches, fmtFecha, fmtNum, matchMulti, multiIsAll,
 });
 
 export const LICITACIONES_DEPS = Object.freeze({
-  APPS_SCRIPT_URL, C, Icon, Spinner, MultiSel, multiIsAll, appAlert, appConfirm, dmNormKey,
+  C, Icon, Spinner, MultiSel, multiIsAll, appAlert, appConfirm, dmNormKey,
   canonicalEquivalentMachineCode, cleanMachine, mainMachineCode,
 });
