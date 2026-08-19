@@ -23,9 +23,6 @@ execFileSync('git',['checkout','--detach','FETCH_HEAD'],{cwd:tmp,stdio:'inherit'
 const checkedSourceCommit=execFileSync('git',['rev-parse','HEAD'],{cwd:tmp,encoding:'utf8'}).trim();
 if(checkedSourceCommit!==parity.sourceCommit)fail(`No se pudo validar el baseline esperado ${parity.sourceCommit}; se obtuvo ${checkedSourceCommit}.`);
 
-// Sólo se exige igualdad byte-a-byte para archivos cuya implementación debe ser
-// literalmente idéntica entre ambas apps. Las pantallas que tienen adapters Supabase,
-// wrappers de carga o políticas de cache distintas se validan por contratos más abajo.
 const exactFiles=[
   'src/components/CalendarPeriodMonthYear.jsx',
   'src/hooks/useProgressiveRows.js',
@@ -44,7 +41,6 @@ for(const file of exactFiles){
   catch(error){fail(`${file}: ${error.message}`);}
 }
 
-// Contratos funcionales para archivos que deliberadamente difieren por backend.
 const contracts=[
   ['src/modules/home/ViewBienvenidaProjectFilter.jsx',[/project/i,/filter/i]],
   ['src/modules/home/homeAvailability.js',[/calculateHomeAvailabilityFromRop02/,/calculateOpenOtItems/,/calculateAtrasoRop02/]],
@@ -53,16 +49,13 @@ const contracts=[
   ['src/modules/mantenimiento/MantenimientoProgramadoView.jsx',[/mantenimiento/i,/programado/i]],
   ['src/modules/oficina-tecnica/OficinaTecnicaRoute.jsx',[/OficinaTecnica/]],
   ['src/services/dataRefreshPolicy.js',[/refresh/i]],
-  ['src/shared/projects.js',[/project/i|proyecto/i]],
+  ['src/shared/projects.js',[/project|proyecto/i]],
 ];
 for(const [file,patterns] of contracts){
   let text='';try{text=read(file);}catch(error){fail(`${file}: ${error.message}`);continue;}
   for(const pattern of patterns){pattern.lastIndex=0;if(!pattern.test(text))fail(`${file} no cumple contrato funcional requerido: ${pattern}`);}
 }
 
-// En la versión Supabase se permiten imports heredados de appsScriptApi/config/app SI
-// esas capas son adapters locales y no ejecutan red hacia Apps Script. Lo realmente
-// prohibido es cualquier endpoint/runtime de Google Script en el frontend.
 const forbidden=[
   /google\.script\.run/g,
   /script\.google\.com\/macros/g,
