@@ -8,7 +8,7 @@ import {vehicleKmMaintenanceVitePlugin} from './vehicle-km-maintenance-vite-plug
 import {pmVehicleScopeVitePlugin} from './pm-vehicle-scope-vite-plugin.mjs';
 import {pmVehicleDisplayVitePlugin} from './pm-vehicle-display-vite-plugin.mjs';
 import {equipmentProfileCodeHistoryVitePlugin} from './equipment-profile-code-history-vite-plugin.mjs';
-import {equipmentProfileLayoutFixVitePlugin} from './equipment-profile-layout-fix-vite-plugin.mjs';
+import {equipmentProfileLayoutVitePlugin} from './equipment-profile-layout-vite-plugin.mjs';
 
 const root=process.cwd();
 const plugins=[
@@ -17,7 +17,7 @@ const plugins=[
   pmVehicleScopeVitePlugin(),
   pmVehicleDisplayVitePlugin(),
   equipmentProfileCodeHistoryVitePlugin(),
-  equipmentProfileLayoutFixVitePlugin(),
+  equipmentProfileLayoutVitePlugin(),
   tallerCentralNavigationVitePlugin(),
   atrasoIchcFixesVitePlugin(),
 ];
