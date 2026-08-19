@@ -6,12 +6,18 @@ import {atrasoIchcFixesVitePlugin} from './atraso-ichc-fixes-vite-plugin.mjs';
 import {intelligentRefreshVitePlugin} from './intelligent-refresh-vite-plugin.mjs';
 import {vehicleKmMaintenanceVitePlugin} from './vehicle-km-maintenance-vite-plugin.mjs';
 import {pmVehicleScopeVitePlugin} from './pm-vehicle-scope-vite-plugin.mjs';
+import {pmVehicleDisplayVitePlugin} from './pm-vehicle-display-vite-plugin.mjs';
+import {equipmentProfileCodeHistoryVitePlugin} from './equipment-profile-code-history-vite-plugin.mjs';
+import {equipmentProfileLayoutFixVitePlugin} from './equipment-profile-layout-fix-vite-plugin.mjs';
 
 const root=process.cwd();
 const plugins=[
   intelligentRefreshVitePlugin(),
   vehicleKmMaintenanceVitePlugin(),
   pmVehicleScopeVitePlugin(),
+  pmVehicleDisplayVitePlugin(),
+  equipmentProfileCodeHistoryVitePlugin(),
+  equipmentProfileLayoutFixVitePlugin(),
   tallerCentralNavigationVitePlugin(),
   atrasoIchcFixesVitePlugin(),
 ];
