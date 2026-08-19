@@ -1,11 +1,14 @@
 import { defineConfig } from 'vite'
 import react from '@vitejs/plugin-react'
 import { tallerCentralNavigationVitePlugin } from './scripts/taller-central-navigation-vite-plugin.mjs'
+import { atrasoIchcFixesVitePlugin } from './scripts/atraso-ichc-fixes-vite-plugin.mjs'
+import { intelligentRefreshVitePlugin } from './scripts/intelligent-refresh-vite-plugin.mjs'
 
-// La app Supabase contiene directamente la paginación progresiva; solo se aplica
-// el transform de navegación de Taller Central que replica la app original.
+// La versión Supabase conserva la paginación progresiva implementada directamente
+// en sus componentes. Los demás transforms replican el comportamiento vigente de
+// la app original sin reemplazar la capa de datos Supabase.
 export default defineConfig({
-  plugins: [tallerCentralNavigationVitePlugin(), react()],
+  plugins: [tallerCentralNavigationVitePlugin(), atrasoIchcFixesVitePlugin(), intelligentRefreshVitePlugin(), react()],
   server: {
     host: '0.0.0.0'
   },
