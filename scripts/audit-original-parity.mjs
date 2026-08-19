@@ -10,10 +10,22 @@ const read=p=>fs.readFileSync(path.join(root,p),'utf8');
 const source=p=>fs.readFileSync(path.join(tmp,p),'utf8');
 const fail=message=>{console.error(`PARITY ERROR: ${message}`);process.exitCode=1;};
 
-execFileSync('git',['clone','--depth=1',sourceRepo,tmp],{stdio:'inherit'});
-const sourceCommit=execFileSync('git',['rev-parse','HEAD'],{cwd:tmp,encoding:'utf8'}).trim();
 const parity=JSON.parse(read('docs/original-parity.json'));
-if(parity.sourceCommit!==sourceCommit)fail(`La app original avanzó: baseline ${parity.sourceCommit}, main actual ${sourceCommit}.`);
+
+// La app original puede avanzar mientras seguimos desarrollando la versión Supabase.
+// Validamos siempre contra el commit explícitamente registrado como baseline. Si main
+// avanzó, se informa como NOTICE pero no se convierte cada push Supabase en un fallo.
+const currentSourceCommit=execFileSync('git',['ls-remote',sourceRepo,'refs/heads/main'],{encoding:'utf8'}).trim().split(/\s+/)[0]||'';
+if(currentSourceCommit&&parity.sourceCommit!==currentSourceCommit){
+  console.warn(`PARITY NOTICE: delta-mining-ops avanzó desde ${parity.sourceCommit} hasta ${currentSourceCommit}. Portar cambios y actualizar baseline cuando corresponda.`);
+}
+
+execFileSync('git',['init',tmp],{stdio:'inherit'});
+execFileSync('git',['remote','add','origin',sourceRepo],{cwd:tmp,stdio:'inherit'});
+execFileSync('git',['fetch','--depth=1','origin',parity.sourceCommit],{cwd:tmp,stdio:'inherit'});
+execFileSync('git',['checkout','--detach','FETCH_HEAD'],{cwd:tmp,stdio:'inherit'});
+const checkedSourceCommit=execFileSync('git',['rev-parse','HEAD'],{cwd:tmp,encoding:'utf8'}).trim();
+if(checkedSourceCommit!==parity.sourceCommit)fail(`No se pudo validar el baseline esperado ${parity.sourceCommit}; se obtuvo ${checkedSourceCommit}.`);
 
 const exactFiles=[
   'src/components/CalendarPeriodMonthYear.jsx',
@@ -37,7 +49,7 @@ const exactFiles=[
   'tests/projects.test.mjs'
 ];
 for(const file of exactFiles){
-  try{if(read(file)!==source(file))fail(`${file} difiere de delta-mining-ops.`);}
+  try{if(read(file)!==source(file))fail(`${file} difiere de delta-mining-ops@${parity.sourceCommit}.`);}
   catch(error){fail(`${file}: ${error.message}`);}
 }
 
@@ -56,8 +68,6 @@ function walk(dir){
     if(entry.isDirectory())walk(full);
     else if(/\.(js|jsx|mjs)$/.test(entry.name)){
       const rel=path.relative(root,full).replace(/\\/g,'/');
-      // app.js y appsScriptApi.js pueden permanecer como archivos legacy no importados;
-      // lo que se impide es que la aplicación activa vuelva a depender de ellos.
       if(rel==='src/config/app.js'||rel==='src/services/appsScriptApi.js')continue;
       const text=fs.readFileSync(full,'utf8');
       for(const pattern of forbidden){pattern.lastIndex=0;if(pattern.test(text))fail(`${rel} contiene dependencia prohibida de Apps Script: ${pattern}`);}
@@ -81,4 +91,4 @@ if(!writeActions.includes('runOperationalWrite'))fail('writeActions.js no está 
 const stockService=read('src/services/stockService.js');
 if(!stockService.includes('./operationalSupabase.js'))fail('stockService.js no está conectado a Supabase.');
 
-if(!process.exitCode)console.log(`Paridad estática OK contra delta-mining-ops@${sourceCommit}`);
+if(!process.exitCode)console.log(`Paridad estática OK contra delta-mining-ops@${parity.sourceCommit}${currentSourceCommit&&currentSourceCommit!==parity.sourceCommit?` (main original actual: ${currentSourceCommit})`:''}`);
