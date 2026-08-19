@@ -1,8 +1,8 @@
 {
   "sourceRepository": "NahuelGarciaDelta/delta-mining-ops",
-  "sourceCommit": "118d43b3da50ca93edf3ae5f371e5cc842c82252",
+  "sourceCommit": "9a0b6a8d79c78e436d4b47bb898f5c6c00d0ab71",
   "syncedAt": "2026-08-19",
   "policy": "UI, filtros, pestañas, navegación, cálculos, permisos, vistas y lógica de dominio se mantienen en paridad con la app original. La única diferencia deliberada es la capa de datos: la versión Supabase lee y escribe mediante Supabase y conserva la sincronización secundaria con Sheets.",
   "status": "functional-parity-current",
-  "notes": "Se incorporaron Taller Central, movimientos y cambio de interno, vínculo con Atraso, correcciones de Atraso/ICHC, refresh inteligente, historial de movimientos, Informe de Costos y el alcance vigente de PM para vehículos/camiones por kilometraje. Progressive rows permanece implementado directamente en la versión Supabase para evitar el transform histórico incompatible de Abastecimiento."
+  "notes": "Se incorporó la columna Código anterior de Lista Maestra como identidad histórica exclusivamente para Ficha Única, junto con la visualización y correlación vigente de vehículos en Mantenimiento Programado. Supabase expone codigo_anterior como columna tipada y conserva raw_data. Progressive rows permanece implementado directamente en la versión Supabase para evitar el transform histórico incompatible de Abastecimiento."
 }
