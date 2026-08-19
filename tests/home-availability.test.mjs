@@ -47,14 +47,14 @@ test("horas positivas y OD cuentan como disponibles, FS como no disponible",()=>
   assert.equal(result.disponibilidad,67);
 });
 
-test("EM y cero horas no se reclasifican como Trabajo ni inflan disponibilidad",()=>{
+test("EM con cero horas conserva la clasificación vigente de la app original",()=>{
   const result=calculateHomeAvailabilityFromRop02([
     row("EXC-0001","2026-08-10",0,"EM"),
     row("EXC-0002","2026-08-10",0,"OD"),
   ]);
-  assert.equal(result.disponibles,1);
-  assert.equal(result.noDisponibles,1);
-  assert.equal(result.items.find(item=>item.interno==="EXC-0001")?.estado,"EM");
+  assert.equal(result.disponibles,2);
+  assert.equal(result.noDisponibles,0);
+  assert.equal(result.items.find(item=>item.interno==="EXC-0001")?.estado,"Trabajo");
   assert.equal(result.fsItems.length,0);
 });
 
