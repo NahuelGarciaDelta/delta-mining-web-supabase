@@ -5,12 +5,14 @@ import { atrasoIchcFixesVitePlugin } from './scripts/atraso-ichc-fixes-vite-plug
 import { intelligentRefreshVitePlugin } from './scripts/intelligent-refresh-vite-plugin.mjs'
 import { vehicleKmMaintenanceVitePlugin } from './scripts/vehicle-km-maintenance-vite-plugin.mjs'
 import { pmVehicleScopeVitePlugin } from './scripts/pm-vehicle-scope-vite-plugin.mjs'
+import { pmVehicleDisplayVitePlugin } from './scripts/pm-vehicle-display-vite-plugin.mjs'
+import { equipmentProfileCodeHistoryVitePlugin } from './scripts/equipment-profile-code-history-vite-plugin.mjs'
 
 // La versión Supabase conserva la paginación progresiva implementada directamente
 // en sus componentes. Los demás transforms replican el comportamiento vigente de
 // la app original sin reemplazar la capa de datos Supabase.
 export default defineConfig({
-  plugins: [intelligentRefreshVitePlugin(), vehicleKmMaintenanceVitePlugin(), pmVehicleScopeVitePlugin(), tallerCentralNavigationVitePlugin(), atrasoIchcFixesVitePlugin(), react()],
+  plugins: [intelligentRefreshVitePlugin(), vehicleKmMaintenanceVitePlugin(), pmVehicleScopeVitePlugin(), pmVehicleDisplayVitePlugin(), equipmentProfileCodeHistoryVitePlugin(), tallerCentralNavigationVitePlugin(), atrasoIchcFixesVitePlugin(), react()],
   server: {
     host: '0.0.0.0'
   },
