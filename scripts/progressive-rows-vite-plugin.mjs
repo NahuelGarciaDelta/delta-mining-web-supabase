@@ -12,19 +12,9 @@ function transformCommonUi(code){
   return code.replace(/>Mostrar 250 más<\/button>/g,">Ver 100 más</button>");
 }
 
-function transformInformeCostos(code){
-  let s=code;
-  const oldMonthly=`  const hastaCostoMensual=dFechaH||"";\n\n  React.useEffect(()=>{\n    setFechaHCostoMensual(dFechaH||"");\n  },[dFechaH]);`;
-  const newMonthly=`  const hastaCostoMensual=dFechaH||"";\n\n  // Mantener el período mensual alineado con el filtro general Mes/Año.\n  React.useEffect(()=>{\n    setFechaDCostoMensual(dFechaD||"");\n    setFechaHCostoMensual(dFechaH||"");\n  },[dFechaD,dFechaH]);`;
-  s=replaceOnce(s,oldMonthly,newMonthly,"sincronización mensual Informe de Costos");
-
-  const obsolete=`\n  React.useEffect(()=>{\n    if(!soloFiltroMesCostos)return;\n    const mismoMes=fechaD&&fechaH&&String(fechaD).slice(0,7)===String(fechaH).slice(0,7);\n    if((fechaD||fechaH)&&!mismoMes){\n      setFechaD("");\n      setFechaH("");\n    }\n  },[soloFiltroMesCostos,fechaD,fechaH]);\n`;
-  if(s.includes(obsolete))s=s.replace(obsolete,"\n");
-  return s;
-}
-
 function transformAbastecimiento(code){
   let s=code;
+
   s=s.replace("const [stockVisibleLimit,setStockVisibleLimit]=useState(250);","const [stockVisibleLimit,setStockVisibleLimit]=useState(100);");
   s=s.replace(/setStockVisibleLimit\(250\);/g,"setStockVisibleLimit(100);");
   s=s.replace(/setStockVisibleLimit\(v=>v\+250\)/g,"setStockVisibleLimit(v=>v+100)");
@@ -32,7 +22,12 @@ function transformAbastecimiento(code){
   s=s.replace(/>Mostrar 250 más<\/button>/g,">Ver 100 más</button>");
 
   if(!s.includes("const progressiveRemitos=useProgressiveRows(filteredRemitos")){
-    s=replaceOnce(s,"\n  const buildSentByCode=useCallback((sourceRemitos=[])=>{","\n  const progressiveRemitos=useProgressiveRows(filteredRemitos,{resetKey:remitoSearch});\n\n  const buildSentByCode=useCallback((sourceRemitos=[])=>{","progressiveRemitos");
+    s=replaceOnce(
+      s,
+      "\n  const buildSentByCode=useCallback((sourceRemitos=[])=>{",
+      "\n  const progressiveRemitos=useProgressiveRows(filteredRemitos,{resetKey:remitoSearch});\n\n  const buildSentByCode=useCallback((sourceRemitos=[])=>{",
+      "progressiveRemitos",
+    );
   }
   s=s.replace("{filteredRemitos.length?filteredRemitos.map(rem=>(","{filteredRemitos.length?progressiveRemitos.visibleRows.map(rem=>(");
 
@@ -41,7 +36,12 @@ function transformAbastecimiento(code){
   s=replaceOnce(s,remitoEnd,remitoNew,"footer remitos");
 
   if(!s.includes("const progressiveEnviosSinSolicitud=useProgressiveRows(enviosSinSolicitudRows")){
-    s=replaceOnce(s,"\n  const exportarEnviosSinSolicitud=useCallback(()=>{","\n  const progressiveEnviosSinSolicitud=useProgressiveRows(enviosSinSolicitudRows,{resetKey:tab});\n\n  const exportarEnviosSinSolicitud=useCallback(()=>{","progressiveEnviosSinSolicitud");
+    s=replaceOnce(
+      s,
+      "\n  const exportarEnviosSinSolicitud=useCallback(()=>{",
+      "\n  const progressiveEnviosSinSolicitud=useProgressiveRows(enviosSinSolicitudRows,{resetKey:tab});\n\n  const exportarEnviosSinSolicitud=useCallback(()=>{",
+      "progressiveEnviosSinSolicitud",
+    );
   }
   s=s.replace("{enviosSinSolicitudRows.length?enviosSinSolicitudRows.map(r=>(","{enviosSinSolicitudRows.length?progressiveEnviosSinSolicitud.visibleRows.map(r=>(");
 
@@ -53,6 +53,7 @@ function transformAbastecimiento(code){
   const editFooter='<div style={{padding:"10px 12px",fontSize:11,color:C.textSub,borderTop:`1px solid ${C.border}22`}}>{fmtNum(editRows.length)} solicitudes mostradas</div>';
   const editFooterNew='<div style={{padding:"10px 12px",fontSize:11,color:C.textSub,borderTop:`1px solid ${C.border}22`,display:"flex",alignItems:"center",justifyContent:"center",gap:10}}><span>Mostrando {fmtNum(progressiveMainRows.visibleCount)} de {fmtNum(progressiveMainRows.totalCount)} solicitudes</span>{progressiveMainRows.hasMore&&<button type="button" onClick={progressiveMainRows.showMore} style={{height:30,border:`1px solid ${C.blue}55`,background:C.blueDim,color:C.blue,borderRadius:8,padding:"0 10px",fontSize:11,fontWeight:900,cursor:"pointer"}}>Ver 100 más</button>}</div>';
   s=s.replace(editFooter,editFooterNew);
+
   return s;
 }
 
@@ -64,7 +65,6 @@ export function progressiveRowsVitePlugin(){
       const file=normalizeId(id);
       if(file.endsWith("/src/components/ui/index.jsx"))return{code:transformCommonUi(code),map:null};
       if(file.endsWith("/src/modules/abastecimiento/AbastecimientoModule.jsx"))return{code:transformAbastecimiento(code),map:null};
-      if(file.endsWith("/src/modules/informe-costos/InformeCostosView.jsx"))return{code:transformInformeCostos(code),map:null};
       return null;
     },
   };
