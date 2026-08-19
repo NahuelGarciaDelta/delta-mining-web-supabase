@@ -1,8 +1,8 @@
 {
   "sourceRepository": "NahuelGarciaDelta/delta-mining-ops",
-  "sourceCommit": "9a0b6a8d79c78e436d4b47bb898f5c6c00d0ab71",
+  "sourceCommit": "e37881069fb35b8e3f4a56975080bdca8fb4e71e",
   "syncedAt": "2026-08-19",
   "policy": "UI, filtros, pestañas, navegación, cálculos, permisos, vistas y lógica de dominio se mantienen en paridad con la app original. La única diferencia deliberada es la capa de datos: la versión Supabase lee y escribe mediante Supabase y conserva la sincronización secundaria con Sheets.",
   "status": "functional-parity-current",
-  "notes": "Se incorporó la columna Código anterior de Lista Maestra como identidad histórica exclusivamente para Ficha Única, junto con la visualización y correlación vigente de vehículos en Mantenimiento Programado. Supabase expone codigo_anterior como columna tipada y conserva raw_data. Progressive rows permanece implementado directamente en la versión Supabase para evitar el transform histórico incompatible de Abastecimiento."
+  "notes": "Baseline actualizado al main vigente de la app original. Incluye Código anterior en Ficha Única, correlación histórica de códigos, filtro por proyecto, mejoras de selector/layout de Ficha Única y visualización/correlación vigente de vehículos en Mantenimiento Programado. Progressive rows permanece implementado directamente en la versión Supabase para evitar el transform histórico incompatible de Abastecimiento."
 }
