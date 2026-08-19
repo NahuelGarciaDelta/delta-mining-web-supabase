@@ -69,6 +69,27 @@ function rma15Legacy(row={}){
 
 const rawLegacy=row=>({...row.raw_data,_sourceDataset:row.source_dataset,_sourceRow:row.source_row});
 
+function listaEquiposLegacy(row={}){
+  const raw=row.raw_data||{};
+  const familyFromRaw=raw.Familia||raw.FAMILIA||raw.Tipo||raw["Tipo de equipo"]||Object.entries(raw).find(([key])=>String(key).trim().toLowerCase().startsWith("familia"))?.[1]||"";
+  const familia=String(row.familia||familyFromRaw||"").trim();
+  return {
+    ...raw,
+    "Codigo nuevo":row.codigo_nuevo||raw["Codigo nuevo"]||raw["Código nuevo"]||"",
+    "Código nuevo":row.codigo_nuevo||raw["Código nuevo"]||raw["Codigo nuevo"]||"",
+    "Código de Drusila":row.codigo_drusila||raw["Código de Drusila"]||raw["Codigo de Drusila"]||"",
+    "Codigo de Drusila":row.codigo_drusila||raw["Codigo de Drusila"]||raw["Código de Drusila"]||"",
+    "Código anterior":row.codigo_anterior||raw["Código anterior"]||raw["Codigo anterior"]||"",
+    "Codigo anterior":row.codigo_anterior||raw["Codigo anterior"]||raw["Código anterior"]||"",
+    Familia:familia,
+    Marca:row.marca||raw.Marca||"",
+    Modelo:row.modelo||raw.Modelo||"",
+    "Lugar de alquiler":row.lugar_alquiler||raw["Lugar de alquiler"]||"",
+    _sourceDataset:row.source_dataset,
+    _sourceRow:row.source_row,
+  };
+}
+
 async function page(table,params,configure,adapt){
   const limit=params.limit==="all"?2000:Math.min(Math.max(Number(params.limit)||PAGE_SIZE,1),2000),offset=Math.max(Number(params.offset)||0,0);
   let query=requireSupabase().from(table).select("*",{count:"exact"});
@@ -116,7 +137,7 @@ async function getRop02Source_(sourceDataset){
 
 export const getOperationalSource=async key=>{
   if(["rop02_fs","rop02_jm","rop02_filosur","rop02_zorro"].includes(key))return getRop02Source_(key);
-  const config={rop05:["rop05",rop05Legacy],rma15_fs:["rma15_frontend",rma15Legacy],rma15_jm:["rma15_frontend",rma15Legacy],lista_equipos:["lista_equipos",rawLegacy],insumos:["insumos",rawLegacy]}[key];
+  const config={rop05:["rop05",rop05Legacy],rma15_fs:["rma15_frontend",rma15Legacy],rma15_jm:["rma15_frontend",rma15Legacy],lista_equipos:["lista_equipos",listaEquiposLegacy],insumos:["insumos",rawLegacy]}[key];
   if(!config)throw new Error(`Fuente tipada no soportada: ${key}`);
   const [tableName,adapt]=config,all=[];
   for(let offset=0;;offset+=1000){let query=requireSupabase().from(tableName).select("*");
