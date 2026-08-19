@@ -23,14 +23,41 @@ execFileSync('git',['checkout','--detach','FETCH_HEAD'],{cwd:tmp,stdio:'inherit'
 const checkedSourceCommit=execFileSync('git',['rev-parse','HEAD'],{cwd:tmp,encoding:'utf8'}).trim();
 if(checkedSourceCommit!==parity.sourceCommit)fail(`No se pudo validar el baseline esperado ${parity.sourceCommit}; se obtuvo ${checkedSourceCommit}.`);
 
+// Todo archivo que no depende de la persistencia debe ser byte-a-byte idéntico.
+// Si la original cambia alguno, CI falla hasta que la versión Supabase sea portada.
 const exactFiles=[
+  'vite.config.js',
+  'scripts/progressive-rows-vite-plugin.mjs',
+  'scripts/taller-central-navigation-vite-plugin.mjs',
+  'scripts/atraso-ichc-fixes-vite-plugin.mjs',
+  'scripts/intelligent-refresh-vite-plugin.mjs',
+  'scripts/vehicle-km-maintenance-vite-plugin.mjs',
+  'scripts/pm-vehicle-scope-vite-plugin.mjs',
+  'scripts/pm-vehicle-display-vite-plugin.mjs',
+  'scripts/equipment-profile-code-history-vite-plugin.mjs',
+  'scripts/equipment-profile-alias-project-multiselect-vite-plugin.mjs',
+  'scripts/equipment-profile-deduplicate-last-rop02-vite-plugin.mjs',
+  'scripts/equipment-profile-location-vehicle-label-vite-plugin.mjs',
+  'scripts/equipment-profile-vehicle-arrows-vite-plugin.mjs',
   'src/components/CalendarPeriodMonthYear.jsx',
   'src/hooks/useProgressiveRows.js',
   'src/modules/equipment/EquipmentProfileWithLastRop02.jsx',
   'src/modules/equipment/equipmentCode.js',
   'src/modules/equipment/equipmentMovementHistory.js',
   'src/modules/equipment/index.js',
+  'src/modules/home/FleetUtilizationPanel.jsx',
+  'src/modules/home/ViewBienvenidaProjectFilter.jsx',
+  'src/modules/home/fleetAnalytics.js',
+  'src/modules/home/homeAvailability.js',
   'src/modules/home/index.js',
+  'src/shared/access.js',
+  'src/shared/dom.js',
+  'src/shared/formatters.js',
+  'src/shared/icons.js',
+  'src/shared/periodCompare.js',
+  'src/shared/projects.js',
+  'src/shared/safeTooltip.jsx',
+  'src/shared/safeTooltipSecurity.js',
   'src/services/appCache.js',
   'src/services/equipmentMovementsDomain.js',
   'tests/equipmentCode.test.mjs',
@@ -41,15 +68,17 @@ for(const file of exactFiles){
   catch(error){fail(`${file}: ${error.message}`);}
 }
 
+// Estos archivos contienen adaptadores Supabase y por definición no pueden ser
+// byte-a-byte iguales. Se verifican contratos funcionales de la infraestructura original.
 const contracts=[
-  ['src/modules/home/ViewBienvenidaProjectFilter.jsx',[/project/i,/filter/i]],
-  ['src/modules/home/homeAvailability.js',[/calculateHomeAvailabilityFromRop02/,/calculateOpenOtItems/,/calculateAtrasoRop02/]],
+  ['src/modules/equipment/EquipmentProfileView.jsx',[/EquipmentPicker/,/useEquipmentMovements/,/mergeEquipmentMovements/]],
+  ['src/modules/home/ExecutiveDashboard.jsx',[/ExecutiveDashboard/]],
+  ['src/modules/home/ViewBienvenida.jsx',[/ViewBienvenida/]],
   ['src/modules/informe-costos/InformeCostosRoute.jsx',[/getRma15EquipmentUniverse/,/getRma15\(/,/getRop02\(/]],
   ['src/modules/informe-costos/InformeCostosView.jsx',[/MemoViewCostosMant|ViewCostosMant/]],
   ['src/modules/mantenimiento/MantenimientoProgramadoView.jsx',[/mantenimiento/i,/programado/i]],
   ['src/modules/oficina-tecnica/OficinaTecnicaRoute.jsx',[/OficinaTecnica/]],
   ['src/services/dataRefreshPolicy.js',[/refresh/i]],
-  ['src/shared/projects.js',[/project|proyecto/i]],
 ];
 for(const [file,patterns] of contracts){
   let text='';try{text=read(file);}catch(error){fail(`${file}: ${error.message}`);continue;}
@@ -62,9 +91,7 @@ const forbidden=[
   /VITE_APPS_SCRIPT_URL/g
 ];
 
-// La app Supabase conserva Apps Script únicamente como adaptador de autenticación
-// y fallback de compatibilidad. Estas referencias son intencionales y están
-// aisladas en dos archivos; el resto de src debe permanecer libre de Apps Script.
+// Apps Script sólo puede quedar aislado como autenticación/fallback de compatibilidad.
 const appsScriptAllowlist=new Map([
   ['src/config/app.js',new Set([
     '/script\\.google\\.com\\/macros/g',
@@ -74,11 +101,9 @@ const appsScriptAllowlist=new Map([
     '/VITE_APPS_SCRIPT_URL/g'
   ])]
 ]);
-
 function isAllowedAppsScriptReference(rel,pattern){
   return appsScriptAllowlist.get(rel)?.has(String(pattern))===true;
 }
-
 function walk(dir){
   for(const entry of fs.readdirSync(dir,{withFileTypes:true})){
     const full=path.join(dir,entry.name);
@@ -88,9 +113,7 @@ function walk(dir){
       const text=fs.readFileSync(full,'utf8');
       for(const pattern of forbidden){
         pattern.lastIndex=0;
-        if(pattern.test(text)&&!isAllowedAppsScriptReference(rel,pattern)){
-          fail(`${rel} contiene dependencia prohibida de Apps Script: ${pattern}`);
-        }
+        if(pattern.test(text)&&!isAllowedAppsScriptReference(rel,pattern))fail(`${rel} contiene dependencia prohibida de Apps Script: ${pattern}`);
       }
     }
   }
@@ -99,7 +122,8 @@ walk(path.join(root,'src'));
 
 const requiredSupabase=[
   'src/services/supabaseClient.js','src/services/operationalSupabase.js','src/services/supabaseReadBridge.js',
-  'src/services/tallerMovements.js','src/services/abastecimientoSupabase.js','src/services/stockService.js'
+  'src/services/tallerMovements.js','src/services/abastecimientoSupabase.js','src/services/stockService.js',
+  'src/data/operationalRepository.js'
 ];
 for(const file of requiredSupabase)if(!fs.existsSync(path.join(root,file)))fail(`Falta capa Supabase requerida: ${file}`);
 
@@ -109,5 +133,9 @@ const stockService=read('src/services/stockService.js');
 if(!stockService.includes('./operationalSupabase.js'))fail('stockService.js no está conectado a Supabase.');
 const apiAdapter=read('src/services/appsScriptApi.js');
 if(!apiAdapter.includes('requireSupabase')||!apiAdapter.includes('getOperationalSource'))fail('appsScriptApi.js no funciona como adapter Supabase.');
+const operationalRepository=read('src/data/operationalRepository.js');
+for(const field of ['Código Nuevo','Código anterior','Código de Drusila','Familia','Lugar de alquiler']){
+  if(!operationalRepository.includes(field))fail(`operationalRepository.js no expone el campo de Lista Maestra requerido por la original: ${field}`);
+}
 
-if(!process.exitCode)console.log(`Paridad estática OK contra delta-mining-ops@${parity.sourceCommit}${currentSourceCommit&&currentSourceCommit!==parity.sourceCommit?` (main original actual: ${currentSourceCommit})`:''}`);
+if(!process.exitCode)console.log(`Paridad integral estática OK contra delta-mining-ops@${parity.sourceCommit}${currentSourceCommit&&currentSourceCommit!==parity.sourceCommit?` (main original actual: ${currentSourceCommit})`:''}`);
