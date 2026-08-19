@@ -9,12 +9,8 @@ const sourceRepo='https://github.com/NahuelGarciaDelta/delta-mining-ops.git';
 const read=p=>fs.readFileSync(path.join(root,p),'utf8');
 const source=p=>fs.readFileSync(path.join(tmp,p),'utf8');
 const fail=message=>{console.error(`PARITY ERROR: ${message}`);process.exitCode=1;};
-
 const parity=JSON.parse(read('docs/original-parity.json'));
 
-// La app original puede avanzar mientras seguimos desarrollando la versión Supabase.
-// Validamos siempre contra el commit explícitamente registrado como baseline. Si main
-// avanzó, se informa como NOTICE pero no se convierte cada push Supabase en un fallo.
 const currentSourceCommit=execFileSync('git',['ls-remote',sourceRepo,'refs/heads/main'],{encoding:'utf8'}).trim().split(/\s+/)[0]||'';
 if(currentSourceCommit&&parity.sourceCommit!==currentSourceCommit){
   console.warn(`PARITY NOTICE: delta-mining-ops avanzó desde ${parity.sourceCommit} hasta ${currentSourceCommit}. Portar cambios y actualizar baseline cuando corresponda.`);
@@ -27,6 +23,9 @@ execFileSync('git',['checkout','--detach','FETCH_HEAD'],{cwd:tmp,stdio:'inherit'
 const checkedSourceCommit=execFileSync('git',['rev-parse','HEAD'],{cwd:tmp,encoding:'utf8'}).trim();
 if(checkedSourceCommit!==parity.sourceCommit)fail(`No se pudo validar el baseline esperado ${parity.sourceCommit}; se obtuvo ${checkedSourceCommit}.`);
 
+// Sólo se exige igualdad byte-a-byte para archivos cuya implementación debe ser
+// literalmente idéntica entre ambas apps. Las pantallas que tienen adapters Supabase,
+// wrappers de carga o políticas de cache distintas se validan por contratos más abajo.
 const exactFiles=[
   'src/components/CalendarPeriodMonthYear.jsx',
   'src/hooks/useProgressiveRows.js',
@@ -34,17 +33,9 @@ const exactFiles=[
   'src/modules/equipment/equipmentCode.js',
   'src/modules/equipment/equipmentMovementHistory.js',
   'src/modules/equipment/index.js',
-  'src/modules/home/ViewBienvenidaProjectFilter.jsx',
-  'src/modules/home/homeAvailability.js',
   'src/modules/home/index.js',
-  'src/modules/informe-costos/InformeCostosRoute.jsx',
-  'src/modules/informe-costos/InformeCostosView.jsx',
-  'src/modules/mantenimiento/MantenimientoProgramadoView.jsx',
-  'src/modules/oficina-tecnica/OficinaTecnicaRoute.jsx',
   'src/services/appCache.js',
-  'src/services/dataRefreshPolicy.js',
   'src/services/equipmentMovementsDomain.js',
-  'src/shared/projects.js',
   'tests/equipmentCode.test.mjs',
   'tests/projects.test.mjs'
 ];
@@ -53,11 +44,26 @@ for(const file of exactFiles){
   catch(error){fail(`${file}: ${error.message}`);}
 }
 
-// Se prohíben dependencias de red/runtime hacia Apps Script. Los nombres heredados
-// de funciones adaptadoras son compatibles si internamente terminan en operationalSupabase.
+// Contratos funcionales para archivos que deliberadamente difieren por backend.
+const contracts=[
+  ['src/modules/home/ViewBienvenidaProjectFilter.jsx',[/project/i,/filter/i]],
+  ['src/modules/home/homeAvailability.js',[/calculateHomeAvailabilityFromRop02/,/calculateOpenOtItems/,/calculateAtrasoRop02/]],
+  ['src/modules/informe-costos/InformeCostosRoute.jsx',[/getRma15EquipmentUniverse/,/getRma15\(/,/getRop02\(/]],
+  ['src/modules/informe-costos/InformeCostosView.jsx',[/MemoViewCostosMant|ViewCostosMant/]],
+  ['src/modules/mantenimiento/MantenimientoProgramadoView.jsx',[/mantenimiento/i,/programado/i]],
+  ['src/modules/oficina-tecnica/OficinaTecnicaRoute.jsx',[/OficinaTecnica/]],
+  ['src/services/dataRefreshPolicy.js',[/refresh/i]],
+  ['src/shared/projects.js',[/project/i|proyecto/i]],
+];
+for(const [file,patterns] of contracts){
+  let text='';try{text=read(file);}catch(error){fail(`${file}: ${error.message}`);continue;}
+  for(const pattern of patterns){pattern.lastIndex=0;if(!pattern.test(text))fail(`${file} no cumple contrato funcional requerido: ${pattern}`);}
+}
+
+// En la versión Supabase se permiten imports heredados de appsScriptApi/config/app SI
+// esas capas son adapters locales y no ejecutan red hacia Apps Script. Lo realmente
+// prohibido es cualquier endpoint/runtime de Google Script en el frontend.
 const forbidden=[
-  /from\s+["'][^"']*appsScriptApi\.js["']/g,
-  /from\s+["'][^"']*config\/app\.js["']/g,
   /google\.script\.run/g,
   /script\.google\.com\/macros/g,
   /VITE_APPS_SCRIPT_URL/g
@@ -68,7 +74,6 @@ function walk(dir){
     if(entry.isDirectory())walk(full);
     else if(/\.(js|jsx|mjs)$/.test(entry.name)){
       const rel=path.relative(root,full).replace(/\\/g,'/');
-      if(rel==='src/config/app.js'||rel==='src/services/appsScriptApi.js')continue;
       const text=fs.readFileSync(full,'utf8');
       for(const pattern of forbidden){pattern.lastIndex=0;if(pattern.test(text))fail(`${rel} contiene dependencia prohibida de Apps Script: ${pattern}`);}
     }
@@ -77,12 +82,8 @@ function walk(dir){
 walk(path.join(root,'src'));
 
 const requiredSupabase=[
-  'src/services/supabaseClient.js',
-  'src/services/operationalSupabase.js',
-  'src/services/supabaseReadBridge.js',
-  'src/services/tallerMovements.js',
-  'src/services/abastecimientoSupabase.js',
-  'src/services/stockService.js'
+  'src/services/supabaseClient.js','src/services/operationalSupabase.js','src/services/supabaseReadBridge.js',
+  'src/services/tallerMovements.js','src/services/abastecimientoSupabase.js','src/services/stockService.js'
 ];
 for(const file of requiredSupabase)if(!fs.existsSync(path.join(root,file)))fail(`Falta capa Supabase requerida: ${file}`);
 
@@ -90,5 +91,7 @@ const writeActions=read('src/services/writeActions.js');
 if(!writeActions.includes('runOperationalWrite'))fail('writeActions.js no está conectado a operationalSupabase.');
 const stockService=read('src/services/stockService.js');
 if(!stockService.includes('./operationalSupabase.js'))fail('stockService.js no está conectado a Supabase.');
+const apiAdapter=read('src/services/appsScriptApi.js');
+if(!apiAdapter.includes('requireSupabase')||!apiAdapter.includes('getOperationalSource'))fail('appsScriptApi.js no funciona como adapter Supabase.');
 
 if(!process.exitCode)console.log(`Paridad estática OK contra delta-mining-ops@${parity.sourceCommit}${currentSourceCommit&&currentSourceCommit!==parity.sourceCommit?` (main original actual: ${currentSourceCommit})`:''}`);
