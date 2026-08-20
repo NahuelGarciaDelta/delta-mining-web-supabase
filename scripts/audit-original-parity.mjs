@@ -24,153 +24,41 @@ execFileSync('git',['checkout','--detach','FETCH_HEAD'],{cwd:tmp,stdio:'inherit'
 const checkedSourceCommit=execFileSync('git',['rev-parse','HEAD'],{cwd:tmp,encoding:'utf8'}).trim();
 if(checkedSourceCommit!==parity.sourceCommit)fail(`No se pudo validar el baseline esperado ${parity.sourceCommit}; se obtuvo ${checkedSourceCommit}.`);
 
-// Archivos totalmente independientes de la persistencia: deben conservar el mismo
-// contenido funcional que la original. Se normalizan EOL y newline final para evitar
-// falsos positivos de formato entre Windows/Linux/GitHub.
 const exactFiles=[
-  'vite.config.js',
-  'scripts/progressive-rows-vite-plugin.mjs',
-  'scripts/atraso-ichc-fixes-vite-plugin.mjs',
-  'scripts/intelligent-refresh-vite-plugin.mjs',
-  'scripts/pm-vehicle-scope-vite-plugin.mjs',
-  'scripts/pm-vehicle-display-vite-plugin.mjs',
-  'scripts/equipment-profile-deduplicate-last-rop02-vite-plugin.mjs',
-  'scripts/equipment-profile-location-vehicle-label-vite-plugin.mjs',
-  'scripts/equipment-profile-vehicle-arrows-vite-plugin.mjs',
-  'src/components/CalendarPeriodMonthYear.jsx',
-  'src/hooks/useProgressiveRows.js',
-  'src/modules/equipment/EquipmentProfileWithLastRop02.jsx',
-  'src/modules/equipment/equipmentCode.js',
-  'src/modules/equipment/equipmentMovementHistory.js',
-  'src/modules/equipment/index.js',
-  'src/modules/home/FleetUtilizationPanel.jsx',
-  'src/modules/home/ViewBienvenidaProjectFilter.jsx',
-  'src/modules/home/fleetAnalytics.js',
-  'src/modules/home/homeAvailability.js',
-  'src/modules/home/index.js',
-  'src/shared/access.js',
-  'src/shared/dom.js',
-  'src/shared/formatters.js',
-  'src/shared/icons.js',
-  'src/shared/periodCompare.js',
-  'src/shared/projects.js',
-  'src/shared/safeTooltip.jsx',
-  'src/shared/safeTooltipSecurity.js',
-  'src/services/appCache.js',
-  'src/services/equipmentMovementsDomain.js',
-  'tests/equipmentCode.test.mjs',
-  'tests/projects.test.mjs'
+  'vite.config.js','scripts/progressive-rows-vite-plugin.mjs','scripts/atraso-ichc-fixes-vite-plugin.mjs','scripts/intelligent-refresh-vite-plugin.mjs','scripts/pm-vehicle-scope-vite-plugin.mjs','scripts/pm-vehicle-display-vite-plugin.mjs','scripts/equipment-profile-deduplicate-last-rop02-vite-plugin.mjs','scripts/equipment-profile-location-vehicle-label-vite-plugin.mjs','scripts/equipment-profile-vehicle-arrows-vite-plugin.mjs','src/components/CalendarPeriodMonthYear.jsx','src/hooks/useProgressiveRows.js','src/modules/equipment/EquipmentProfileWithLastRop02.jsx','src/modules/equipment/equipmentCode.js','src/modules/equipment/equipmentMovementHistory.js','src/modules/equipment/index.js','src/modules/home/FleetUtilizationPanel.jsx','src/modules/home/ViewBienvenidaProjectFilter.jsx','src/modules/home/fleetAnalytics.js','src/modules/home/homeAvailability.js','src/modules/home/index.js','src/shared/access.js','src/shared/dom.js','src/shared/formatters.js','src/shared/icons.js','src/shared/periodCompare.js','src/shared/projects.js','src/shared/safeTooltip.jsx','src/shared/safeTooltipSecurity.js','src/services/appCache.js','src/services/equipmentMovementsDomain.js','tests/equipmentCode.test.mjs','tests/projects.test.mjs'
 ];
-for(const file of exactFiles){
-  try{
-    if(normalizeText(read(file))!==normalizeText(source(file)))fail(`${file} difiere de delta-mining-ops@${parity.sourceCommit}.`);
-  }catch(error){fail(`${file}: ${error.message}`);}
-}
+for(const file of exactFiles){try{if(normalizeText(read(file))!==normalizeText(source(file)))fail(`${file} difiere de delta-mining-ops@${parity.sourceCommit}.`);}catch(error){fail(`${file}: ${error.message}`);}}
 
-// Estos archivos contienen adaptaciones deliberadas para Supabase o transforman
-// componentes que en esta versión consumen Supabase. No deben compararse byte-a-byte:
-// se validan los contratos funcionales que deben conservar de la app original.
 const contracts=[
-  ['scripts/taller-central-navigation-vite-plugin.mjs',[
-    /tallerCentralNavigationVitePlugin/,
-    /tallerMovimientoSubida/,
-    /tallerMovimientoBaja/,
-    /tallerMovimientoMovilizacion/,
-    /tallerMovimientoCambio/,
-    /Movimiento de equipos/
-  ]],
-  ['scripts/vehicle-km-maintenance-vite-plugin.mjs',[
-    /vehicleKmMaintenanceVitePlugin/,
-    /MantenimientoProgramadoView/,
-    /kil[oó]metro|\bkm\b/i
-  ]],
-  ['scripts/equipment-profile-code-history-vite-plugin.mjs',[
-    /equipmentProfileCodeHistoryVitePlugin/,
-    /Código anterior|Codigo anterior/,
-    /physicalIdentity/,
-    /projectMovements/
-  ]],
-  ['scripts/equipment-profile-alias-project-multiselect-vite-plugin.mjs',[
-    /equipmentProfileAliasProjectMultiselectVitePlugin/,
-    /selectedProject|selectedProjects/,
-    /profileAliasKeys|alias/i,
-    /proyecto/i
-  ]],
-  ['src/modules/equipment/EquipmentProfileView.jsx',[/EquipmentPicker/,/useEquipmentMovements/,/mergeEquipmentMovements/]],
-  ['src/modules/home/ExecutiveDashboard.jsx',[/ExecutiveDashboard/]],
-  ['src/modules/home/ViewBienvenida.jsx',[/ViewBienvenida/]],
-  ['src/modules/informe-costos/InformeCostosRoute.jsx',[/getRma15EquipmentUniverse/,/getRma15\(/,/getRop02\(/]],
-  ['src/modules/informe-costos/InformeCostosView.jsx',[/MemoViewCostosMant|ViewCostosMant/]],
-  ['src/modules/mantenimiento/MantenimientoProgramadoView.jsx',[/mantenimiento/i,/programado/i]],
-  ['src/modules/oficina-tecnica/OficinaTecnicaRoute.jsx',[/OficinaTecnica/]],
-  ['src/services/dataRefreshPolicy.js',[/refresh/i]],
+ ['scripts/taller-central-navigation-vite-plugin.mjs',[/tallerCentralNavigationVitePlugin/,/tallerMovimientoSubida/,/tallerMovimientoBaja/,/tallerMovimientoMovilizacion/,/tallerMovimientoCambio/,/Movimiento de equipos/]],
+ ['scripts/vehicle-km-maintenance-vite-plugin.mjs',[/vehicleKmMaintenanceVitePlugin/,/MantenimientoProgramadoView/,/kil[oó]metro|\bkm\b/i]],
+ ['scripts/equipment-profile-code-history-vite-plugin.mjs',[/equipmentProfileCodeHistoryVitePlugin/,/Código anterior|Codigo anterior/,/physicalIdentity/,/projectMovements/]],
+ ['scripts/equipment-profile-alias-project-multiselect-vite-plugin.mjs',[/equipmentProfileAliasProjectMultiselectVitePlugin/,/selectedProject|selectedProjects/,/profileAliasKeys|alias/i,/proyecto/i]],
+ ['src/modules/equipment/EquipmentProfileView.jsx',[/EquipmentPicker/,/useEquipmentMovements/,/mergeEquipmentMovements/]],
+ ['src/modules/home/ExecutiveDashboard.jsx',[/ExecutiveDashboard/]],
+ ['src/modules/home/ViewBienvenida.jsx',[/ViewBienvenida/]],
+ // Informe de Costos fue aislado deliberadamente: la ruta debe tomar snapshots locales
+ // de las fuentes hidratadas y no volver a consultar RMA15/ROP02 compartidos.
+ ['src/modules/informe-costos/InformeCostosRoute.jsx',[/InformeCostosRoute/,/snapshot|Snapshot/,/rma15FS/,/rma15JM/,/listaEquipos/,/insumos/]],
+ ['src/modules/informe-costos/InformeCostosView.jsx',[/MemoViewCostosMant|ViewCostosMant/]],
+ ['src/modules/mantenimiento/MantenimientoProgramadoView.jsx',[/mantenimiento/i,/programado/i]],
+ ['src/modules/oficina-tecnica/OficinaTecnicaRoute.jsx',[/OficinaTecnica/]],
+ ['src/services/dataRefreshPolicy.js',[/refresh/i]],
 ];
-for(const [file,patterns] of contracts){
-  let text='';try{text=read(file);}catch(error){fail(`${file}: ${error.message}`);continue;}
-  for(const pattern of patterns){pattern.lastIndex=0;if(!pattern.test(text))fail(`${file} no cumple contrato funcional requerido: ${pattern}`);}
-}
+for(const [file,patterns] of contracts){let text='';try{text=read(file);}catch(error){fail(`${file}: ${error.message}`);continue;}for(const pattern of patterns){pattern.lastIndex=0;if(!pattern.test(text))fail(`${file} no cumple contrato funcional requerido: ${pattern}`);}}
 
-const forbidden=[
-  /google\.script\.run/g,
-  /script\.google\.com\/macros/g,
-  /VITE_APPS_SCRIPT_URL/g
-];
-
-// Apps Script sólo puede quedar aislado como autenticación/fallback de compatibilidad.
-const appsScriptAllowlist=new Map([
-  ['src/config/app.js',new Set([
-    '/script\\.google\\.com\\/macros/g',
-    '/VITE_APPS_SCRIPT_URL/g'
-  ])],
-  ['src/services/appsScriptApi.js',new Set([
-    '/VITE_APPS_SCRIPT_URL/g'
-  ])]
-]);
-function isAllowedAppsScriptReference(rel,pattern){
-  return appsScriptAllowlist.get(rel)?.has(String(pattern))===true;
-}
-function walk(dir){
-  for(const entry of fs.readdirSync(dir,{withFileTypes:true})){
-    const full=path.join(dir,entry.name);
-    if(entry.isDirectory())walk(full);
-    else if(/\.(js|jsx|mjs)$/.test(entry.name)){
-      const rel=path.relative(root,full).replace(/\\/g,'/');
-      const text=fs.readFileSync(full,'utf8');
-      for(const pattern of forbidden){
-        pattern.lastIndex=0;
-        if(pattern.test(text)&&!isAllowedAppsScriptReference(rel,pattern))fail(`${rel} contiene dependencia prohibida de Apps Script: ${pattern}`);
-      }
-    }
-  }
-}
+const forbidden=[/google\.script\.run/g,/script\.google\.com\/macros/g,/VITE_APPS_SCRIPT_URL/g];
+const appsScriptAllowlist=new Map([['src/config/app.js',new Set(['/script\\.google\\.com\\/macros/g','/VITE_APPS_SCRIPT_URL/g'])],['src/services/appsScriptApi.js',new Set(['/VITE_APPS_SCRIPT_URL/g'])]]);
+function isAllowedAppsScriptReference(rel,pattern){return appsScriptAllowlist.get(rel)?.has(String(pattern))===true;}
+function walk(dir){for(const entry of fs.readdirSync(dir,{withFileTypes:true})){const full=path.join(dir,entry.name);if(entry.isDirectory())walk(full);else if(/\.(js|jsx|mjs)$/.test(entry.name)){const rel=path.relative(root,full).replace(/\\/g,'/');const text=fs.readFileSync(full,'utf8');for(const pattern of forbidden){pattern.lastIndex=0;if(pattern.test(text)&&!isAllowedAppsScriptReference(rel,pattern))fail(`${rel} contiene dependencia prohibida de Apps Script: ${pattern}`);}}}}
 walk(path.join(root,'src'));
 
-const requiredSupabase=[
-  'src/services/supabaseClient.js','src/services/operationalSupabase.js','src/services/supabaseReadBridge.js',
-  'src/services/tallerMovements.js','src/services/abastecimientoSupabase.js','src/services/stockService.js',
-  'src/data/operationalRepository.js'
-];
+const requiredSupabase=['src/services/supabaseClient.js','src/services/operationalSupabase.js','src/services/supabaseReadBridge.js','src/services/tallerMovements.js','src/services/abastecimientoSupabase.js','src/services/stockService.js','src/data/operationalRepository.js'];
 for(const file of requiredSupabase)if(!fs.existsSync(path.join(root,file)))fail(`Falta capa Supabase requerida: ${file}`);
-
-const writeActions=read('src/services/writeActions.js');
-if(!writeActions.includes('runOperationalWrite'))fail('writeActions.js no está conectado a operationalSupabase.');
-const stockService=read('src/services/stockService.js');
-if(!stockService.includes('./operationalSupabase.js'))fail('stockService.js no está conectado a Supabase.');
-const apiAdapter=read('src/services/appsScriptApi.js');
-if(!apiAdapter.includes('requireSupabase')||!apiAdapter.includes('getOperationalSource'))fail('appsScriptApi.js no funciona como adapter Supabase.');
-
-// La Lista Maestra debe exponer exactamente la información que consume la app original,
-// aceptando las variantes reales de mayúsculas/acento usadas en sus encabezados.
+const writeActions=read('src/services/writeActions.js');if(!writeActions.includes('runOperationalWrite'))fail('writeActions.js no está conectado a operationalSupabase.');
+const stockService=read('src/services/stockService.js');if(!stockService.includes('./operationalSupabase.js'))fail('stockService.js no está conectado a Supabase.');
+const apiAdapter=read('src/services/appsScriptApi.js');if(!apiAdapter.includes('requireSupabase')||!apiAdapter.includes('getOperationalSource'))fail('appsScriptApi.js no funciona como adapter Supabase.');
 const operationalRepository=read('src/data/operationalRepository.js');
-const equipmentFieldContracts=[
-  ['Código nuevo',['"Código nuevo"','"Codigo nuevo"']],
-  ['Código anterior',['"Código anterior"','"Codigo anterior"']],
-  ['Código de Drusila',['"Código de Drusila"','"Codigo de Drusila"']],
-  ['Familia',['Familia:']],
-  ['Lugar de alquiler',['"Lugar de alquiler"']]
-];
-for(const [field,markers] of equipmentFieldContracts){
-  if(!markers.some(marker=>operationalRepository.includes(marker)))fail(`operationalRepository.js no expone el campo de Lista Maestra requerido por la original: ${field}`);
-}
-
+const equipmentFieldContracts=[['Código nuevo',['"Código nuevo"','"Codigo nuevo"']],['Código anterior',['"Código anterior"','"Codigo anterior"']],['Código de Drusila',['"Código de Drusila"','"Codigo de Drusila"']],['Familia',['Familia:']],['Lugar de alquiler',['"Lugar de alquiler"']]];
+for(const [field,markers] of equipmentFieldContracts){if(!markers.some(marker=>operationalRepository.includes(marker)))fail(`operationalRepository.js no expone el campo de Lista Maestra requerido por la original: ${field}`);}
 if(!process.exitCode)console.log(`Paridad integral estática OK contra delta-mining-ops@${parity.sourceCommit}${currentSourceCommit&&currentSourceCommit!==parity.sourceCommit?` (main original actual: ${currentSourceCommit})`:''}`);
