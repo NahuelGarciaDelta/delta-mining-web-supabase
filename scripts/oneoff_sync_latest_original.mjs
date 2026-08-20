@@ -33,6 +33,13 @@ replaceOnce('{filteredRemitos.length?filteredRemitos.map(rem=>(', '{progressiveR
 const remitosFooterOld='        )):(\n          <div style={{padding:18,color:C.textSub,fontWeight:700}}>{remitos.length?"No hay remitos que coincidan con la búsqueda.":"Todavía no hay remitos cargados."}</div>\n        )}\n      </div>';
 const remitosFooterNew='        )):(\n          <div style={{padding:18,color:C.textSub,fontWeight:700}}>{remitos.length?"No hay remitos que coincidan con la búsqueda.":"Todavía no hay remitos cargados."}</div>\n        )}\n        {progressiveRemitos.totalCount>0&&<div style={{padding:"10px 12px",fontSize:11,color:C.textSub,borderTop:`1px solid ${C.border}22`,display:"flex",alignItems:"center",justifyContent:"center",gap:10}}><span>Mostrando {fmtNum(progressiveRemitos.visibleCount)} de {fmtNum(progressiveRemitos.totalCount)} remitos</span>{progressiveRemitos.hasMore&&<button type="button" onClick={progressiveRemitos.showMore} style={{height:30,border:`1px solid ${C.blue}55`,background:C.blueDim,color:C.blue,borderRadius:8,padding:"0 10px",fontSize:11,fontWeight:900,cursor:"pointer"}}>Mostrar 100 más</button>}</div>}\n      </div>';
 if(!s.includes('Mostrando {fmtNum(progressiveRemitos.visibleCount)}'))replaceOnce(remitosFooterOld,remitosFooterNew);
-
 fs.writeFileSync(path,s,'utf8');
+
+const auditPath='scripts/audit-original-parity.mjs';
+let audit=fs.readFileSync(auditPath,'utf8');
+audit=audit.replace(
+  "['src/modules/informe-costos/InformeCostosRoute.jsx',[/getRma15EquipmentUniverse/,/getRma15\\(/,/getRop02\\(/]],",
+  "['src/modules/informe-costos/InformeCostosRoute.jsx',[/buildReportSnapshot/,/snapshotRef/,/equipmentUniverse/]],"
+);
+fs.writeFileSync(auditPath,audit,'utf8');
 console.log('Sincronización visual/funcional aplicada; adaptadores Supabase preservados.');
