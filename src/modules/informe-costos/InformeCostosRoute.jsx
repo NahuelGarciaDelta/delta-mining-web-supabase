@@ -1,116 +1,100 @@
 import React from "react";
 import { InformeCostosBoundary, InformeCostosLoading } from "./components/InformeCostosBoundary.jsx";
-import {getRma15,getRma15EquipmentUniverse,getRop02} from "../../data/historicalDataService.js";
-import {getValue,normalizeRMA15,normalizeROP02} from "../../shared/domain/index.jsx";
 
 const LazyInformeCostosView = React.lazy(() =>
   import("./InformeCostosView.jsx").then((module) => ({ default: module.MemoViewCostosMant })),
 );
 
-const STATE_KEY="delta_costos_mant_state_v1";
-const today=()=>new Date().toISOString().slice(0,10);
-function readQuerySpec(){
-  let state={};try{state=JSON.parse(window.localStorage.getItem(STATE_KEY)||"{}");}catch(_){}
-  const tab=state.tab||"t1",historical=tab==="t9"||tab==="t10",monthly=["t4","t5","t6","t8"].includes(tab);
-  if(historical)return{desde:state.fechaHistoricaDesde||"2026-01-01",hasta:state.fechaHistoricaHasta||today(),tab};
-  if(monthly)return{desde:state.fechaDCostoMensual||state.fechaD||"2026-01-01",hasta:state.fechaHCostoMensual||state.fechaH||today(),tab};
-  if(state.modoFecha==="dia"&&state.fechaDia)return{desde:state.fechaDia,hasta:state.fechaDia,tab};
-  return{desde:state.fechaD||"2026-01-01",hasta:state.fechaH||today(),tab};
+/**
+ * Informe de Costos is intentionally isolated from every other view.
+ *
+ * The report captures one complete snapshot of the hydrated application sources
+ * when it mounts. That snapshot is never replaced by later background hydration,
+ * Mantenimiento filters, historical pagination or any other global state update.
+ * The report is remounted when the user leaves and enters again, so a new visit
+ * can capture the latest complete application data without allowing values to
+ * change silently while the report is open.
+ */
+function cloneRows(rows) {
+  return (Array.isArray(rows) ? rows : []).map((row) => {
+    if (!row || typeof row !== "object") return row;
+    const copy = { ...row };
+    if (Array.isArray(row.insumos)) {
+      copy.insumos = row.insumos.map((item) =>
+        item && typeof item === "object" ? { ...item } : item,
+      );
+    }
+    return copy;
+  });
 }
 
-function canonicalizeRma15Row(row){
-  const r=row||{};
-  const out={...r};
-  out["Fecha de OT"]=getValue(r,["Fecha de OT","FECHA DE OT","Fecha OT","Fecha","FECHA"]);
-  out["CODIGO N° INTERNO"]=getValue(r,[
-    "CODIGO N° INTERNO","CODIGO NÂ° INTERNO","CÓDIGO N° INTERNO","CÓDIGO Nº INTERNO",
-    "Codigo N° Interno","Codigo Nº Interno","Codigo N Interno","Código Interno",
-    "Codigo Interno","Codigo interno del equipo","Código interno del equipo","Codigo Int","Interno"
-  ]);
-  out["EQUIPO"]=getValue(r,["EQUIPO","Equipo","Tipo Equipo","Tipo de equipo"]);
-  out["TURNO EN QUE SE HIZO LA OT"]=getValue(r,["TURNO EN QUE SE HIZO LA OT","Turno en que se hizo la OT","Turno","TURNO"]);
-  out["TIPO DE MANTENIMIENTO"]=getValue(r,["TIPO DE MANTENIMIENTO","Tipo de mantenimiento","Tipo Mantenimiento","TIPO MANTENIMIENTO"]);
-  out["Km / hs"]=getValue(r,["Km / hs","KM / HS","Km/hs","Km Hs","Horómetro","Horometro","Horas"]);
-  out["INTERVENCIÓN O REPARACIÓN REALIZADA (Si es PM, especificar cual) LOS SOPLETEOS DE FILTROS VAN EN ESTA SECCION O CUALQUIER SERVICIO QUE SE REALICE)"]=getValue(r,[
-    "INTERVENCIÓN O REPARACIÓN REALIZADA (Si es PM, especificar cual) LOS SOPLETEOS DE FILTROS VAN EN ESTA SECCION O CUALQUIER SERVICIO QUE SE REALICE)",
-    "Intervención o reparación realizada","Intervencion o reparacion realizada","Intervención","Intervencion","Reparación","Reparacion"
-  ]);
-  out["¿EQUIPO QUEDO OPERATIVO?"]=getValue(r,[
-    "¿EQUIPO QUEDO OPERATIVO?","¿EQUIPO QUEDÓ OPERATIVO?","EQUIPO QUEDO OPERATIVO",
-    "EQUIPO QUEDÓ OPERATIVO","Operativo","Estado operativo","Estado"
-  ]);
-  out["OBSERVACIONES"]=getValue(r,["OBSERVACIONES","Observaciones","Observación","Observacion"]);
-  for(let i=1;i<=10;i++){
-    out[`cantidad ${i}`]=getValue(r,[`cantidad ${i}`,`Cantidad ${i}`,`CANTIDAD ${i}`,`cant ${i}`,`Cant ${i}`]);
-    out[`codigo ${i}`]=getValue(r,[`codigo ${i}`,`Código ${i}`,`Codigo ${i}`,`CODIGO ${i}`,`CÓDIGO ${i}`]);
-    out[`nombre ${i}`]=getValue(r,[`nombre ${i}`,`Nombre ${i}`,`NOMBRE ${i}`,`descripcion ${i}`,`Descripción ${i}`]);
-  }
-  return out;
+function cloneRecord(record) {
+  if (!record || typeof record !== "object" || Array.isArray(record)) return {};
+  return Object.fromEntries(
+    Object.entries(record).map(([key, value]) => [
+      key,
+      value && typeof value === "object" && !Array.isArray(value) ? { ...value } : value,
+    ]),
+  );
 }
 
-function rmaKey(row){
-  return JSON.stringify([
-    String(row?.fecha||"").slice(0,10),String(row?.maquina||"").trim().toUpperCase(),
-    String(row?.tipoMant||"").trim().toUpperCase(),String(row?.turno||"").trim().toUpperCase(),
-    String(row?.kmHs??""),String(row?.intervencion||"").trim().toUpperCase(),
-  ]);
+function buildReportSnapshot(props) {
+  return {
+    rma15: cloneRows(props.rma15),
+    rop02: cloneRows(props.rop02),
+    listaEquipos: cloneRows(props.listaEquipos),
+    insumos: cloneRecord(props.insumos),
+  };
 }
-function rmaRichness(row){
-  const ins=Array.isArray(row?.insumos)?row.insumos:[];
-  return ins.length*10+ins.filter(x=>Number(x?.costoTotal)>0).length*100+(Number(row?.costoTotal)>0?1000:0);
-}
-function mergeRma15(baseRows,remoteRows){
-  const map=new Map();
-  for(const row of [...(Array.isArray(baseRows)?baseRows:[]),...(Array.isArray(remoteRows)?remoteRows:[])]){
-    if(!row?.fecha||!row?.maquina)continue;
-    const key=rmaKey(row),prev=map.get(key);
-    if(!prev||rmaRichness(row)>=rmaRichness(prev))map.set(key,row);
-  }
-  return [...map.values()].sort((a,b)=>String(a?.fecha||"").localeCompare(String(b?.fecha||"")));
-}
-function ropKey(row){
-  return JSON.stringify([row?.fecha||"",row?.maquina||row?._internoRaw||"",row?.proyecto||"",row?.turno||"",row?.parte||"",row?.operario||"",row?.horometroInicial??"",row?.horometroFinal??"",row?.horas??""]);
-}
-function mergeRop02(baseRows,remoteRows){
-  const map=new Map();
-  for(const row of [...(Array.isArray(baseRows)?baseRows:[]),...(Array.isArray(remoteRows)?remoteRows:[])]){
-    if(!row?.fecha||!row?.maquina)continue;
-    map.set(ropKey(row),row);
-  }
-  return [...map.values()].sort((a,b)=>String(a?.fecha||"").localeCompare(String(b?.fecha||"")));
+
+function hasCompleteReportSources(props) {
+  return (
+    Array.isArray(props.rma15) &&
+    props.rma15.length > 0 &&
+    Array.isArray(props.listaEquipos) &&
+    props.listaEquipos.length > 0 &&
+    props.insumos &&
+    typeof props.insumos === "object" &&
+    Object.keys(props.insumos).length > 0
+  );
 }
 
 function InformeCostosRoute(props) {
-  const [querySpec,setQuerySpec]=React.useState(readQuerySpec);
-  const [remote,setRemote]=React.useState({rma15:null,rop02:null,equipmentUniverse:null,loading:true});
-  React.useEffect(()=>{const update=()=>setQuerySpec(readQuerySpec());window.addEventListener("dm-costos-mant-state-updated",update);return()=>window.removeEventListener("dm-costos-mant-state-updated",update);},[]);
-  React.useEffect(()=>{
-    let alive=true;setRemote(previous=>({...previous,loading:true}));
-    Promise.allSettled([
-      getRma15({desde:querySpec.desde,hasta:querySpec.hasta,limit:"all",sortBy:"fecha",sortDirection:"asc"}),
-      getRop02({desde:querySpec.desde,hasta:querySpec.hasta,limit:"all",sortBy:"fecha",sortDirection:"asc"}),
-      getRma15EquipmentUniverse({desde:querySpec.desde,hasta:querySpec.hasta}),
-    ]).then(([rmaResult,ropResult,universeResult])=>{
-      if(!alive)return;
-      const rma=rmaResult.status==="fulfilled"?rmaResult.value:null,rop=ropResult.status==="fulfilled"?ropResult.value:null;
-      const universe=universeResult.status==="fulfilled"?universeResult.value:null;
-      const normalizedRma=rma?(rma.data||[])
-        .map(row=>canonicalizeRma15Row({...row,_proyectoForzado:row.Proyecto||row.proyecto||"S/D"}))
-        .map(row=>normalizeRMA15(row,props.insumos||{}))
-        .filter(row=>row.fecha&&row.maquina):null;
-      setRemote({rma15:normalizedRma,rop02:rop?normalizeROP02(rop.data||[]):null,equipmentUniverse:Array.isArray(universe?.data)?universe.data:null,loading:false});
-    });
-    return()=>{alive=false;};
-  },[querySpec.desde,querySpec.hasta,props.insumos]);
+  const snapshotRef = React.useRef(null);
 
-  const mergedRma15=React.useMemo(()=>mergeRma15(props.rma15||[],remote.rma15||[]),[props.rma15,remote.rma15]);
-  const mergedRop02=React.useMemo(()=>mergeRop02(props.rop02||[],remote.rop02||[]),[props.rop02,remote.rop02]);
-  const viewProps={...props,rma15:mergedRma15,rop02:mergedRop02,equipmentUniverse:remote.equipmentUniverse};
+  // IMPORTANT: capture ONCE. Do not use useMemo([props.rma15]) here: the global
+  // app can replace rma15/rop02 references after background synchronization and
+  // that used to make the report jump from the complete total to a partial one.
+  if (!snapshotRef.current && hasCompleteReportSources(props)) {
+    snapshotRef.current = buildReportSnapshot(props);
+  }
+
+  const snapshot = snapshotRef.current;
+  const ready = Boolean(snapshot);
+
+  const viewProps = React.useMemo(() => {
+    if (!snapshot) return null;
+    return {
+      ...props,
+      rma15: snapshot.rma15,
+      rop02: snapshot.rop02,
+      listaEquipos: snapshot.listaEquipos,
+      insumos: snapshot.insumos,
+      equipmentUniverse: null,
+    };
+    // The source collections intentionally are NOT dependencies. Once captured,
+    // background source replacements must not alter the open report.
+  }, [snapshot, props.readOnly, props.usdRate, props.deps]);
+
   return (
     <InformeCostosBoundary>
-      <React.Suspense fallback={<InformeCostosLoading />}>
-        <LazyInformeCostosView {...viewProps} />
-      </React.Suspense>
+      {!ready || !viewProps ? (
+        <InformeCostosLoading />
+      ) : (
+        <React.Suspense fallback={<InformeCostosLoading />}>
+          <LazyInformeCostosView {...viewProps} />
+        </React.Suspense>
+      )}
     </InformeCostosBoundary>
   );
 }
