@@ -1,3 +1,4 @@
+// one-off: sincroniza la app Supabase con el último main de delta-mining-ops.
 import fs from 'node:fs';
 import {execFileSync} from 'node:child_process';
 
