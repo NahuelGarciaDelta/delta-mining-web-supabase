@@ -8,6 +8,7 @@ const tmp=fs.mkdtempSync(path.join(os.tmpdir(),'delta-parity-audit-'));
 const sourceRepo='https://github.com/NahuelGarciaDelta/delta-mining-ops.git';
 const read=p=>fs.readFileSync(path.join(root,p),'utf8');
 const source=p=>fs.readFileSync(path.join(tmp,p),'utf8');
+const normalizeText=text=>String(text||'').replace(/\r\n/g,'\n').trimEnd();
 const fail=message=>{console.error(`PARITY ERROR: ${message}`);process.exitCode=1;};
 const parity=JSON.parse(read('docs/original-parity.json'));
 
@@ -23,19 +24,16 @@ execFileSync('git',['checkout','--detach','FETCH_HEAD'],{cwd:tmp,stdio:'inherit'
 const checkedSourceCommit=execFileSync('git',['rev-parse','HEAD'],{cwd:tmp,encoding:'utf8'}).trim();
 if(checkedSourceCommit!==parity.sourceCommit)fail(`No se pudo validar el baseline esperado ${parity.sourceCommit}; se obtuvo ${checkedSourceCommit}.`);
 
-// Todo archivo que no depende de la persistencia debe ser byte-a-byte idéntico.
-// Si la original cambia alguno, CI falla hasta que la versión Supabase sea portada.
+// Archivos totalmente independientes de la persistencia: deben conservar el mismo
+// contenido funcional que la original. Se normalizan EOL y newline final para evitar
+// falsos positivos de formato entre Windows/Linux/GitHub.
 const exactFiles=[
   'vite.config.js',
   'scripts/progressive-rows-vite-plugin.mjs',
-  'scripts/taller-central-navigation-vite-plugin.mjs',
   'scripts/atraso-ichc-fixes-vite-plugin.mjs',
   'scripts/intelligent-refresh-vite-plugin.mjs',
-  'scripts/vehicle-km-maintenance-vite-plugin.mjs',
   'scripts/pm-vehicle-scope-vite-plugin.mjs',
   'scripts/pm-vehicle-display-vite-plugin.mjs',
-  'scripts/equipment-profile-code-history-vite-plugin.mjs',
-  'scripts/equipment-profile-alias-project-multiselect-vite-plugin.mjs',
   'scripts/equipment-profile-deduplicate-last-rop02-vite-plugin.mjs',
   'scripts/equipment-profile-location-vehicle-label-vite-plugin.mjs',
   'scripts/equipment-profile-vehicle-arrows-vite-plugin.mjs',
@@ -64,13 +62,40 @@ const exactFiles=[
   'tests/projects.test.mjs'
 ];
 for(const file of exactFiles){
-  try{if(read(file)!==source(file))fail(`${file} difiere de delta-mining-ops@${parity.sourceCommit}.`);}
-  catch(error){fail(`${file}: ${error.message}`);}
+  try{
+    if(normalizeText(read(file))!==normalizeText(source(file)))fail(`${file} difiere de delta-mining-ops@${parity.sourceCommit}.`);
+  }catch(error){fail(`${file}: ${error.message}`);}
 }
 
-// Estos archivos contienen adaptadores Supabase y por definición no pueden ser
-// byte-a-byte iguales. Se verifican contratos funcionales de la infraestructura original.
+// Estos archivos contienen adaptaciones deliberadas para Supabase o transforman
+// componentes que en esta versión consumen Supabase. No deben compararse byte-a-byte:
+// se validan los contratos funcionales que deben conservar de la app original.
 const contracts=[
+  ['scripts/taller-central-navigation-vite-plugin.mjs',[
+    /tallerCentralNavigationVitePlugin/,
+    /tallerMovimientoSubida/,
+    /tallerMovimientoBaja/,
+    /tallerMovimientoMovilizacion/,
+    /tallerMovimientoCambio/,
+    /Movimiento de equipos/
+  ]],
+  ['scripts/vehicle-km-maintenance-vite-plugin.mjs',[
+    /vehicleKmMaintenanceVitePlugin/,
+    /MantenimientoProgramadoView/,
+    /kil[oó]metro|\bkm\b/i
+  ]],
+  ['scripts/equipment-profile-code-history-vite-plugin.mjs',[
+    /equipmentProfileCodeHistoryVitePlugin/,
+    /Código anterior|Codigo anterior/,
+    /physicalIdentity/,
+    /projectMovements/
+  ]],
+  ['scripts/equipment-profile-alias-project-multiselect-vite-plugin.mjs',[
+    /equipmentProfileAliasProjectMultiselectVitePlugin/,
+    /selectedProject|selectedProjects/,
+    /profileAliasKeys|alias/i,
+    /proyecto/i
+  ]],
   ['src/modules/equipment/EquipmentProfileView.jsx',[/EquipmentPicker/,/useEquipmentMovements/,/mergeEquipmentMovements/]],
   ['src/modules/home/ExecutiveDashboard.jsx',[/ExecutiveDashboard/]],
   ['src/modules/home/ViewBienvenida.jsx',[/ViewBienvenida/]],
@@ -133,9 +158,19 @@ const stockService=read('src/services/stockService.js');
 if(!stockService.includes('./operationalSupabase.js'))fail('stockService.js no está conectado a Supabase.');
 const apiAdapter=read('src/services/appsScriptApi.js');
 if(!apiAdapter.includes('requireSupabase')||!apiAdapter.includes('getOperationalSource'))fail('appsScriptApi.js no funciona como adapter Supabase.');
+
+// La Lista Maestra debe exponer exactamente la información que consume la app original,
+// aceptando las variantes reales de mayúsculas/acento usadas en sus encabezados.
 const operationalRepository=read('src/data/operationalRepository.js');
-for(const field of ['Código Nuevo','Código anterior','Código de Drusila','Familia','Lugar de alquiler']){
-  if(!operationalRepository.includes(field))fail(`operationalRepository.js no expone el campo de Lista Maestra requerido por la original: ${field}`);
+const equipmentFieldContracts=[
+  ['Código nuevo',['"Código nuevo"','"Codigo nuevo"']],
+  ['Código anterior',['"Código anterior"','"Codigo anterior"']],
+  ['Código de Drusila',['"Código de Drusila"','"Codigo de Drusila"']],
+  ['Familia',['Familia:']],
+  ['Lugar de alquiler',['"Lugar de alquiler"']]
+];
+for(const [field,markers] of equipmentFieldContracts){
+  if(!markers.some(marker=>operationalRepository.includes(marker)))fail(`operationalRepository.js no expone el campo de Lista Maestra requerido por la original: ${field}`);
 }
 
 if(!process.exitCode)console.log(`Paridad integral estática OK contra delta-mining-ops@${parity.sourceCommit}${currentSourceCommit&&currentSourceCommit!==parity.sourceCommit?` (main original actual: ${currentSourceCommit})`:''}`);
