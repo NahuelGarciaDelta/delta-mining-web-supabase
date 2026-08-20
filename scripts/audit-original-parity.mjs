@@ -37,9 +37,7 @@ const contracts=[
  ['src/modules/equipment/EquipmentProfileView.jsx',[/EquipmentPicker/,/useEquipmentMovements/,/mergeEquipmentMovements/]],
  ['src/modules/home/ExecutiveDashboard.jsx',[/ExecutiveDashboard/]],
  ['src/modules/home/ViewBienvenida.jsx',[/ViewBienvenida/]],
- // Informe de Costos fue aislado deliberadamente: la ruta debe tomar snapshots locales
- // de las fuentes hidratadas y no volver a consultar RMA15/ROP02 compartidos.
- ['src/modules/informe-costos/InformeCostosRoute.jsx',[/InformeCostosRoute/,/snapshot|Snapshot/,/rma15FS/,/rma15JM/,/listaEquipos/,/insumos/]],
+ ['src/modules/informe-costos/InformeCostosRoute.jsx',[/InformeCostosRoute/,/buildReportSnapshot/,/snapshotRef/,/rma15:\s*cloneRows\(props\.rma15\)/,/rop02:\s*cloneRows\(props\.rop02\)/,/listaEquipos:\s*cloneRows\(props\.listaEquipos\)/,/insumos:\s*cloneRecord\(props\.insumos\)/,/equipmentUniverse:\s*null/]],
  ['src/modules/informe-costos/InformeCostosView.jsx',[/MemoViewCostosMant|ViewCostosMant/]],
  ['src/modules/mantenimiento/MantenimientoProgramadoView.jsx',[/mantenimiento/i,/programado/i]],
  ['src/modules/oficina-tecnica/OficinaTecnicaRoute.jsx',[/OficinaTecnica/]],
