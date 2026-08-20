@@ -20,11 +20,14 @@ test("Dashboard conserva resumen mensual y fuentes globales del original",()=>{
   assert.match(sources,/dashboard:\["rop02_fs","rop02_jm","rop02_filosur","rop02_zorro","rop05","rma15_fs","rma15_jm","insumos","lista_equipos"\]/);
 });
 
-test("Informe de Costos conserva rango activo y carga sus fuentes necesarias",()=>{
+test("Informe de Costos usa snapshot aislado de las fuentes hidratadas",()=>{
   const route=read("../src/modules/informe-costos/InformeCostosRoute.jsx");
-  assert.match(route,/getRma15EquipmentUniverse/);
-  assert.match(route,/fechaHistoricaDesde/);
-  assert.match(route,/fechaDCostoMensual/);
+  assert.match(route,/snapshotRef/);
+  assert.match(route,/buildReportSnapshot/);
+  assert.match(route,/rma15:\s*snapshot\.rma15/);
+  assert.match(route,/rop02:\s*snapshot\.rop02/);
+  assert.match(route,/equipmentUniverse:\s*null/);
+  assert.doesNotMatch(route,/getRma15EquipmentUniverse|getRma15\(|getRop02\(/);
   assert.match(sources,/costosMant:\["insumos","rma15_fs","rma15_jm","lista_equipos"\]/);
 });
 
