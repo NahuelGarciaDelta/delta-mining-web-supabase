@@ -1,8 +1,8 @@
 {
   "sourceRepository": "NahuelGarciaDelta/delta-mining-ops",
-  "sourceCommit": "9c7160c9581bf18999354c2c866eecd50d22eeb9",
-  "syncedAt": "2026-08-19",
+  "sourceCommit": "7d8cc93711e42f52826d55b537ef1a211ca78e15",
+  "syncedAt": "2026-08-20",
   "policy": "UI, filtros, pestañas, navegación, cálculos, permisos, vistas y lógica de dominio se mantienen en paridad con la app original. La única diferencia deliberada es la capa de datos: la versión Supabase lee y escribe mediante Supabase y conserva la sincronización secundaria con Sheets.",
   "status": "functional-parity-current",
-  "notes": "Baseline actualizado al último main de la app original. Incluye Código anterior y aliases históricos, correlación física de equipos, movilizaciones con cambio de interno, historial de movimientos donde ROP02 establece sólo el primer proyecto y los cambios posteriores provienen de Movimiento de equipos, filtros de proyecto en Ficha Única, patente entre paréntesis para camiones/camionetas, ubicación y último proyecto, navegación global con flechas entre equipos y por fecha, y deduplicación del último registro ROP02 conservando la fecha válida. Supabase mantiene únicamente las diferencias necesarias de persistencia, autenticación/adaptadores y lectura/escritura de datos."
+  "notes": "Baseline actualizado al último main de la app original. La versión Supabase debe conservar exactamente la misma experiencia, reglas de negocio, navegación, vistas, filtros, cálculos, nomenclaturas, correlaciones de equipos e historial de movimientos. La única divergencia permitida es la persistencia/adaptación necesaria para Supabase. Incluye la corrección más reciente de Ficha Única para evitar duplicar movimientos históricos derivados desde caches legados y usar como historial visible únicamente los movimientos realmente cargados en Movimiento/Taller."
 }
