@@ -22,7 +22,9 @@ test("Lista, Insumos y fuentes RMA15 compartidas se cargan desde el repositorio 
 
 test("el universo completo alimenta KPIs y exportaciones, no sólo la página visual",()=>{
   assert.match(office,/remoteDataset==="rop05"\?"all":250/);
-  assert.match(maintenance,/limit:"all"/);
+  assert.match(maintenance,/baseRma15=React\.useMemo/);
+  assert.match(maintenance,/if\(!hasRemoteFilter\)return cloneRma15Rows\(baseRma15\)/);
+  assert.match(maintenance,/fetchAllDatasetPages\("rma15",params/);
   assert.match(repository,/if\(params\.limit!=="all"\)return getter\(params\)/);
   assert.match(repository,/fetchAllOperationalPages/);
 });
