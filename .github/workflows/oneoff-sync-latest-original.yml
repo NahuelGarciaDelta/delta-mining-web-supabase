@@ -1,0 +1,36 @@
+name: One-off sync latest original
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'scripts/oneoff_sync_latest_original.mjs'
+
+permissions:
+  contents: write
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - name: Port latest original
+        run: node scripts/oneoff_sync_latest_original.mjs
+      - name: Validate
+        run: npm run verify:all
+      - name: Commit synchronized result
+        run: |
+          rm -f scripts/oneoff_sync_latest_original.mjs .github/workflows/oneoff-sync-latest-original.yml
+          git config user.name "NahuelGarciaDelta"
+          git config user.email "nahuel.garcia@deltamining.com.ar"
+          git add -A
+          git commit -m "Sync latest delta-mining-ops into Supabase app"
+          git push origin HEAD:main
