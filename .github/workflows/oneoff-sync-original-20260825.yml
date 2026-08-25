@@ -2,10 +2,8 @@ name: One-off sync original 2026-08-25
 on:
   push:
     branches: [main]
-    paths:
-      - '.github/workflows/oneoff-sync-original-20260825.yml'
-permissions:
-  contents: write
+    paths: ['.github/workflows/oneoff-sync-original-20260825.yml']
+permissions: {contents: write}
 jobs:
   sync:
     runs-on: ubuntu-latest
@@ -20,70 +18,56 @@ jobs:
           git clone --quiet https://github.com/NahuelGarciaDelta/delta-mining-ops.git /tmp/original
           git -C /tmp/original fetch --quiet origin df8804cca097a53c3d4f14fa5359950e347ce0f1
           test "$(git -C /tmp/original rev-parse origin/main)" = "663118a8a71e9089228dc9f2fbcab0ac043f1f27"
-      - name: Three-way port functional files
+      - name: Port clean functional files
         shell: bash
         run: |
-          set -euo pipefail
-          BASE=df8804cca097a53c3d4f14fa5359950e347ce0f1
-          HEAD=663118a8a71e9089228dc9f2fbcab0ac043f1f27
-          files=(src/modules/oficina-tecnica/OficinaTecnicaModule.jsx src/modules/mantenimiento/MantenimientoProgramadoView.jsx src/modules/home/ViewBienvenida.jsx src/modules/home/ViewBienvenidaProjectFilter.jsx)
-          for f in "${files[@]}"; do
-            git -C /tmp/original show "$BASE:$f" > /tmp/base
-            git -C /tmp/original show "$HEAD:$f" > /tmp/theirs
-            cp "$f" /tmp/ours
-            git merge-file -p /tmp/ours /tmp/base /tmp/theirs > /tmp/merged || { echo "MERGE CONFLICT: $f"; grep -n -C 3 '^<<<<<<<\|^=======\|^>>>>>>>' /tmp/merged || true; exit 2; }
-            cp /tmp/merged "$f"
-          done
-      - name: Port Abastecimiento preserving Supabase adapter
-        shell: bash
+          set -euo pipefail; BASE=df8804cca097a53c3d4f14fa5359950e347ce0f1; HEAD=663118a8a71e9089228dc9f2fbcab0ac043f1f27
+          files=(src/modules/mantenimiento/MantenimientoProgramadoView.jsx src/modules/home/ViewBienvenida.jsx src/modules/home/ViewBienvenidaProjectFilter.jsx)
+          for f in "${files[@]}"; do git -C /tmp/original show "$BASE:$f" >/tmp/base; git -C /tmp/original show "$HEAD:$f" >/tmp/theirs; cp "$f" /tmp/ours; git merge-file -p /tmp/ours /tmp/base /tmp/theirs >/tmp/merged || exit 2; cp /tmp/merged "$f"; done
+      - name: Port Oficina Tecnica preserving remote Supabase facets
         run: |
-          BASE=df8804cca097a53c3d4f14fa5359950e347ce0f1
-          HEAD=663118a8a71e9089228dc9f2fbcab0ac043f1f27
-          F=src/modules/abastecimiento/AbastecimientoModule.jsx
-          git -C /tmp/original show "$BASE:$F" > /tmp/base
-          git -C /tmp/original show "$HEAD:$F" > /tmp/theirs
-          cp "$F" /tmp/ours
-          git merge-file -p /tmp/ours /tmp/base /tmp/theirs > /tmp/merged || true
+          BASE=df8804cca097a53c3d4f14fa5359950e347ce0f1; HEAD=663118a8a71e9089228dc9f2fbcab0ac043f1f27; F=src/modules/oficina-tecnica/OficinaTecnicaModule.jsx
+          git -C /tmp/original show "$BASE:$F" >/tmp/base; git -C /tmp/original show "$HEAD:$F" >/tmp/theirs; cp "$F" /tmp/ours; git merge-file -p /tmp/ours /tmp/base /tmp/theirs >/tmp/merged || true
           python - <<'PY'
           from pathlib import Path
           import re
-          p=Path('/tmp/merged'); s=p.read_text()
-          pat=re.compile(r'<<<<<<< /tmp/ours\n(.*?)=======\n(.*?)>>>>>>> /tmp/theirs\n',re.S)
-          def resolve(m):
+          s=Path('/tmp/merged').read_text(); pat=re.compile(r'<<<<<<< /tmp/ours\n(.*?)=======\n(.*?)>>>>>>> /tmp/theirs\n',re.S)
+          def r(m):
             ours,theirs=m.group(1),m.group(2)
-            both=ours+theirs
-            if 'RABA03_DATA_CACHE_KEY' in both and 'parseChronoDateMs' in both:
-              return ours+theirs
-            if 'sentMap=' in ours and 'sourceRemitos=' in theirs:
-              indent='      '
-              return (indent+'const sourceRemitos=Array.isArray(remitosOverride)?remitosOverride:remitos;\n'
-                      +indent+'const normalizedRows=mapRaba03Rows(raw,sourceRemitos);\n'
-                      +indent+'setRows(normalizedRows);\n'
-                      +indent+'writeCachedSource(RABA03_DATA_CACHE_KEY,{ok:true,data:normalizedRows,meta:{updatedAt:new Date().toISOString(),rows:normalizedRows.length}}).catch(()=>{});\n')
-            if 'raba03InitialLoadDoneRef.current=false' in both:
-              return ours
-            if 'progressiveRaba03Rows=' in theirs:
-              return theirs
+            if 'label="Proyecto"' in ours and 'label="Turno"' in theirs:
+              lines=ours.splitlines(True); turno='            <MultiSel label="Turno" value={vals.turno} onChange={v=>{set("turno",v);setEstado("todos");}} options={[{value:"todos",label:"Todos"},...(remoteFacets?.turno||opts.turno).map(t=>{const u=String(t||"").trim().toUpperCase();return{value:t,label:(u.includes("NOCHE")||u==="TN")?"Turno Noche":(u.includes("DIA")||u==="TD")?"Turno Día":t};})]}/>\n'
+              return lines[0]+turno+''.join(lines[1:])
+            raise SystemExit('Conflicto Oficina no reconocido')
+          s,n=pat.subn(r,s)
+          if '<<<<<<<' in s: raise SystemExit('Conflicto Oficina pendiente')
+          print('Conflictos Oficina resueltos:',n); Path('src/modules/oficina-tecnica/OficinaTecnicaModule.jsx').write_text(s)
+          PY
+      - name: Port Abastecimiento preserving Supabase adapter
+        run: |
+          BASE=df8804cca097a53c3d4f14fa5359950e347ce0f1; HEAD=663118a8a71e9089228dc9f2fbcab0ac043f1f27; F=src/modules/abastecimiento/AbastecimientoModule.jsx
+          git -C /tmp/original show "$BASE:$F" >/tmp/base; git -C /tmp/original show "$HEAD:$F" >/tmp/theirs; cp "$F" /tmp/ours; git merge-file -p /tmp/ours /tmp/base /tmp/theirs >/tmp/merged || true
+          python - <<'PY'
+          from pathlib import Path
+          import re
+          s=Path('/tmp/merged').read_text(); pat=re.compile(r'<<<<<<< /tmp/ours\n(.*?)=======\n(.*?)>>>>>>> /tmp/theirs\n',re.S)
+          def r(m):
+            ours,theirs=m.group(1),m.group(2); both=ours+theirs
+            if 'RABA03_DATA_CACHE_KEY' in both and 'parseChronoDateMs' in both:return ours+theirs
+            if 'sentMap=' in ours and 'sourceRemitos=' in theirs:return '      const sourceRemitos=Array.isArray(remitosOverride)?remitosOverride:remitos;\n      const normalizedRows=mapRaba03Rows(raw,sourceRemitos);\n      setRows(normalizedRows);\n      writeCachedSource(RABA03_DATA_CACHE_KEY,{ok:true,data:normalizedRows,meta:{updatedAt:new Date().toISOString(),rows:normalizedRows.length}}).catch(()=>{});\n'
+            if 'raba03InitialLoadDoneRef.current=false' in both:return ours
+            if 'progressiveRaba03Rows=' in theirs:return theirs
             raise SystemExit('Conflicto Abastecimiento no reconocido:\n'+both[:1200])
-          s,n=pat.subn(resolve,s)
-          if '<<<<<<<' in s or '>>>>>>>' in s: raise SystemExit('Quedaron conflictos sin resolver')
-          print('Conflictos Abastecimiento resueltos:',n)
-          Path('src/modules/abastecimiento/AbastecimientoModule.jsx').write_text(s)
+          s,n=pat.subn(r,s)
+          if '<<<<<<<' in s: raise SystemExit('Conflicto Abastecimiento pendiente')
+          print('Conflictos Abastecimiento resueltos:',n); Path('src/modules/abastecimiento/AbastecimientoModule.jsx').write_text(s)
           PY
       - name: Advance parity baseline
         run: |
           node - <<'NODE'
-          const fs=require('fs'),p='docs/original-parity.json',x=JSON.parse(fs.readFileSync(p,'utf8'));
-          x.sourceCommit='663118a8a71e9089228dc9f2fbcab0ac043f1f27';x.syncedAt='2026-08-25';x.status='functional-parity-current';
-          x.notes='Paridad actualizada contra main original al 2026-08-25. Incluye filtro Turno en Equipos, ajustes de Inicio, Mantenimiento Programado y cambios finales de Abastecimiento/RABA03, conservando la capa Supabase.';
-          fs.writeFileSync(p,JSON.stringify(x,null,2)+'\n');
+          const fs=require('fs'),p='docs/original-parity.json',x=JSON.parse(fs.readFileSync(p,'utf8'));x.sourceCommit='663118a8a71e9089228dc9f2fbcab0ac043f1f27';x.syncedAt='2026-08-25';x.status='functional-parity-current';x.notes='Paridad actualizada contra main original al 2026-08-25. Incluye filtro Turno en Equipos, ajustes de Inicio, Mantenimiento Programado y cambios finales de Abastecimiento/RABA03, conservando la capa Supabase.';fs.writeFileSync(p,JSON.stringify(x,null,2)+'\n');
           NODE
       - name: Install and verify all
         run: npm ci && npm run verify:all
       - name: Commit validated sync and cleanup
         run: |
-          git config user.name 'github-actions[bot]'; git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
-          git add src/modules/abastecimiento/AbastecimientoModule.jsx src/modules/oficina-tecnica/OficinaTecnicaModule.jsx src/modules/mantenimiento/MantenimientoProgramadoView.jsx src/modules/home/ViewBienvenida.jsx src/modules/home/ViewBienvenidaProjectFilter.jsx docs/original-parity.json
-          git rm .github/workflows/oneoff-sync-original-20260825.yml
-          git commit -m 'Sync Supabase parity to original 2026-08-25'
-          git push origin main
+          git config user.name 'github-actions[bot]'; git config user.email '41898282+github-actions[bot]@users.noreply.github.com'; git add src/modules/abastecimiento/AbastecimientoModule.jsx src/modules/oficina-tecnica/OficinaTecnicaModule.jsx src/modules/mantenimiento/MantenimientoProgramadoView.jsx src/modules/home/ViewBienvenida.jsx src/modules/home/ViewBienvenidaProjectFilter.jsx docs/original-parity.json; git rm .github/workflows/oneoff-sync-original-20260825.yml; git commit -m 'Sync Supabase parity to original 2026-08-25'; git push origin main
