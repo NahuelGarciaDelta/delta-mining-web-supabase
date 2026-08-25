@@ -18,12 +18,10 @@ jobs:
           git clone --quiet https://github.com/NahuelGarciaDelta/delta-mining-ops.git /tmp/original
           git -C /tmp/original fetch --quiet origin df8804cca097a53c3d4f14fa5359950e347ce0f1
           test "$(git -C /tmp/original rev-parse origin/main)" = "663118a8a71e9089228dc9f2fbcab0ac043f1f27"
-      - name: Port clean functional files
-        shell: bash
+      - name: Copy backend-independent final views exactly
         run: |
-          set -euo pipefail; BASE=df8804cca097a53c3d4f14fa5359950e347ce0f1; HEAD=663118a8a71e9089228dc9f2fbcab0ac043f1f27
-          files=(src/modules/mantenimiento/MantenimientoProgramadoView.jsx src/modules/home/ViewBienvenida.jsx src/modules/home/ViewBienvenidaProjectFilter.jsx)
-          for f in "${files[@]}"; do git -C /tmp/original show "$BASE:$f" >/tmp/base; git -C /tmp/original show "$HEAD:$f" >/tmp/theirs; cp "$f" /tmp/ours; git merge-file -p /tmp/ours /tmp/base /tmp/theirs >/tmp/merged || exit 2; cp /tmp/merged "$f"; done
+          HEAD=663118a8a71e9089228dc9f2fbcab0ac043f1f27
+          for f in src/modules/mantenimiento/MantenimientoProgramadoView.jsx src/modules/home/ViewBienvenida.jsx src/modules/home/ViewBienvenidaProjectFilter.jsx; do git -C /tmp/original show "$HEAD:$f" > "$f"; done
       - name: Port Oficina Tecnica preserving remote Supabase facets
         run: |
           BASE=df8804cca097a53c3d4f14fa5359950e347ce0f1; HEAD=663118a8a71e9089228dc9f2fbcab0ac043f1f27; F=src/modules/oficina-tecnica/OficinaTecnicaModule.jsx
