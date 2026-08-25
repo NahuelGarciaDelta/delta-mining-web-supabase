@@ -1,0 +1,76 @@
+name: One-off sync original 2026-08-25
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/oneoff-sync-original-20260825.yml'
+permissions:
+  contents: write
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 1
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - name: Fetch source of truth
+        run: |
+          git clone --quiet https://github.com/NahuelGarciaDelta/delta-mining-ops.git /tmp/original
+          cd /tmp/original
+          git fetch --quiet origin df8804cca097a53c3d4f14fa5359950e347ce0f1
+          test "$(git rev-parse origin/main)" = "663118a8a71e9089228dc9f2fbcab0ac043f1f27"
+      - name: Three-way port functional files
+        shell: bash
+        run: |
+          set -euo pipefail
+          BASE=df8804cca097a53c3d4f14fa5359950e347ce0f1
+          HEAD=663118a8a71e9089228dc9f2fbcab0ac043f1f27
+          files=(
+            src/modules/abastecimiento/AbastecimientoModule.jsx
+            src/modules/oficina-tecnica/OficinaTecnicaModule.jsx
+            src/modules/mantenimiento/MantenimientoProgramadoView.jsx
+            src/modules/home/ViewBienvenida.jsx
+            src/modules/home/ViewBienvenidaProjectFilter.jsx
+          )
+          for f in "${files[@]}"; do
+            mkdir -p "$(dirname "$f")"
+            git -C /tmp/original show "$BASE:$f" > /tmp/base
+            git -C /tmp/original show "$HEAD:$f" > /tmp/theirs
+            cp "$f" /tmp/ours
+            if ! git merge-file -p /tmp/ours /tmp/base /tmp/theirs > /tmp/merged; then
+              echo "MERGE CONFLICT: $f"
+              grep -n -C 3 '^<<<<<<<\|^=======\|^>>>>>>>' /tmp/merged || true
+              exit 2
+            fi
+            cp /tmp/merged "$f"
+          done
+      - name: Advance parity baseline
+        run: |
+          node - <<'NODE'
+          const fs=require('fs');
+          const p='docs/original-parity.json';
+          const x=JSON.parse(fs.readFileSync(p,'utf8'));
+          x.sourceCommit='663118a8a71e9089228dc9f2fbcab0ac043f1f27';
+          x.syncedAt='2026-08-25';
+          x.status='functional-parity-current';
+          x.notes='Paridad actualizada contra main original al 2026-08-25. Incluye filtro Turno en Equipos, ajustes de Inicio, Mantenimiento Programado y cambios finales de Abastecimiento/RABA03, conservando la capa Supabase.';
+          fs.writeFileSync(p,JSON.stringify(x,null,2)+'\n');
+          NODE
+      - name: Install and verify all
+        run: |
+          npm ci
+          npm run verify:all
+      - name: Commit validated sync and cleanup
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add src/modules/abastecimiento/AbastecimientoModule.jsx src/modules/oficina-tecnica/OficinaTecnicaModule.jsx src/modules/mantenimiento/MantenimientoProgramadoView.jsx src/modules/home/ViewBienvenida.jsx src/modules/home/ViewBienvenidaProjectFilter.jsx docs/original-parity.json
+          git rm .github/workflows/oneoff-sync-original-20260825.yml
+          git commit -m 'Sync Supabase parity to original 2026-08-25'
+          git push origin main
