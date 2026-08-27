@@ -6,6 +6,7 @@ on:
     paths:
       - 'scripts/complete_parity_20260827.mjs'
       - 'scripts/final_exact_parity_files.mjs'
+      - 'docs/appscript/AppsScript_Supabase_AllSources.js'
       - '.github/workflows/finalize-supabase-parity.yml'
   workflow_dispatch:
 
@@ -32,6 +33,18 @@ jobs:
         run: node --check scripts/complete_parity_20260827.mjs && node --check scripts/final_exact_parity_files.mjs
       - name: Apply reviewed functional merge
         run: node scripts/complete_parity_20260827.mjs && node scripts/final_exact_parity_files.mjs
+      - name: Build ready-to-paste Supabase Apps Script
+        run: |
+          mkdir -p docs/appscript
+          cp AppsScript_Delta_Mining_OPS_ROP02_OK.txt docs/appscript/AppsScript_Supabase_ReadyToPaste.gs
+          printf '\n\n/* ===== SUPABASE ALL-SOURCES ADDON ===== */\n\n' >> docs/appscript/AppsScript_Supabase_ReadyToPaste.gs
+          cat docs/appscript/AppsScript_Supabase_AllSources.js >> docs/appscript/AppsScript_Supabase_ReadyToPaste.gs
+      - name: Check Apps Script bundle
+        run: |
+          test -s docs/appscript/AppsScript_Supabase_ReadyToPaste.gs
+          grep -q 'syncAllConfiguredDatasetsToSupabase' docs/appscript/AppsScript_Supabase_ReadyToPaste.gs
+          grep -q 'syncSupabaseOutboxToSheets' docs/appscript/AppsScript_Supabase_ReadyToPaste.gs
+          grep -q 'SUPABASE_SERVICE_ROLE_KEY' docs/appscript/AppsScript_Supabase_ReadyToPaste.gs
       - name: Check patch integrity
         run: git diff --check
       - name: Full verification
@@ -47,5 +60,5 @@ jobs:
           git config user.name 'github-actions[bot]'
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
           git add -A
-          git commit -m 'Complete Supabase parity with current original'
+          git commit -m 'Publish verified Supabase app and Apps Script bundle'
           git push origin HEAD:main
