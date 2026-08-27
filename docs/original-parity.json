@@ -1,8 +1,8 @@
 {
   "sourceRepository": "NahuelGarciaDelta/delta-mining-ops",
-  "sourceCommit": "df8804cca097a53c3d4f14fa5359950e347ce0f1",
-  "syncedAt": "2026-08-20",
-  "policy": "UI, filtros, pestañas, navegación, cálculos, permisos, vistas y lógica de dominio se mantienen en paridad con la app original. La única diferencia deliberada es la capa de datos: la versión Supabase lee y escribe mediante Supabase y conserva la sincronización secundaria con Sheets.",
+  "sourceCommit": "6c17c531f7161c04f7e1044ecbc4a859b5a4c67a",
+  "syncedAt": "2026-08-27T23:35:01.480Z",
+  "policy": "UI, filtros, pestañas, navegación, cálculos, permisos, vistas y lógica de dominio se mantienen en paridad con la app original. Transporte, lectura, escritura y persistencia remota permanecen Supabase-first.",
   "status": "functional-parity-current",
-  "notes": "Baseline actualizado al main actual de la app original. Incluye los cambios recientes de Abastecimiento, aislamiento de Informe de Costos y carga de Mantenimiento, manteniendo en la versión Supabase únicamente las adaptaciones necesarias de persistencia y lectura/escritura mediante Supabase."
+  "notes": "Port final manual: Desgaste integrado con catálogo Supabase; MantenimientoRoute conserva universo PM Supabase; apariencia por usuario y fondos persisten vía RPC Supabase; login conserva el adapter Supabase; exportación administrativa y bootstrap permanecen activos."
 }

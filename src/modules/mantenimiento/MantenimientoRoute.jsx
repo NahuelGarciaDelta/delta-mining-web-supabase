@@ -2,6 +2,8 @@ import React from "react";
 import { PageLoadingMotoniveladora } from "../../components/ui/index.jsx";
 import {createHistoricalPagedController,fetchAllDatasetPages} from "../../data/historicalDataService.js";
 import {normalizeRMA15} from "../../shared/domain/index.jsx";
+import DesgasteView from "./DesgasteView.jsx";
+import {WEAR_FLAG,WEAR_ACTIVE_EVENT,WEAR_CLOSE_EVENT} from "./wearSidebarBridge.js";
 
 const LazyMantenimientoModule = React.lazy(() => import("./MantenimientoModule.jsx"));
 
@@ -57,6 +59,22 @@ export default function MantenimientoRoute(props){
   const controllerRef=React.useRef(null);
   const requestRef=React.useRef(0);
   const [remote,setRemote]=React.useState(null);
+  const [wearMode,setWearMode]=React.useState(()=>props.mode==="mantenimiento"&&sessionStorage.getItem(WEAR_FLAG)==="desgaste");
+
+  React.useEffect(()=>{
+    const openWear=()=>{if(props.mode==="mantenimiento")setWearMode(true);};
+    const closeWear=()=>setWearMode(false);
+    window.addEventListener(WEAR_ACTIVE_EVENT,openWear);
+    window.addEventListener(WEAR_CLOSE_EVENT,closeWear);
+    return()=>{window.removeEventListener(WEAR_ACTIVE_EVENT,openWear);window.removeEventListener(WEAR_CLOSE_EVENT,closeWear);};
+  },[props.mode]);
+
+  React.useEffect(()=>{
+    if(props.mode!=="mantenimiento"){setWearMode(false);return;}
+    const h=[...document.querySelectorAll(".dm-app-content h1")].find(Boolean);
+    if(h)h.textContent=wearMode?"Desgaste":"Mantenimiento";
+    return()=>{const current=[...document.querySelectorAll(".dm-app-content h1")].find(Boolean);if(current&&current.textContent==="Desgaste")current.textContent="Mantenimiento";};
+  },[wearMode,props.mode]);
 
   if(!controllerRef.current)controllerRef.current=createHistoricalPagedController();
 
@@ -81,7 +99,7 @@ export default function MantenimientoRoute(props){
   ),[params.desde,params.hasta,params.proyecto,params.equipo,params.tipo]);
 
   React.useEffect(()=>{
-    if(props.mode!=="mantenimiento"||!hasRemoteFilter){
+    if(wearMode||props.mode!=="mantenimiento"||!hasRemoteFilter){
       ++requestRef.current;
       setRemote(null);
       return;
@@ -102,7 +120,7 @@ export default function MantenimientoRoute(props){
     }).catch(()=>{});
 
     return()=>{alive=false;};
-  },[props.mode,hasRemoteFilter,params,props.insumos]);
+  },[wearMode,props.mode,hasRemoteFilter,params,props.insumos]);
 
   const loadMore=React.useCallback(()=>{
     if(!hasRemoteFilter)return Promise.resolve(null);
@@ -138,6 +156,8 @@ export default function MantenimientoRoute(props){
       onRemoteExport:exportAll
     };
   },[props,baseRma15,pmListaEquipos,hasRemoteFilter,remote,loadMore,exportAll]);
+
+  if(props.mode==="mantenimiento"&&wearMode)return <DesgasteView rma15={baseRma15} usdRate={props.usdRate}/>;
 
   return (
     <React.Suspense fallback={<PageLoadingMotoniveladora label="Cargando Mantenimiento..."/>}>
