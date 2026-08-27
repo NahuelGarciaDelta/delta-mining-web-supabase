@@ -58,7 +58,8 @@ console.log('Original HEAD:',sourceCommit);
   write('src/modules/mantenimiento/index.js',idx);
 }
 
-// 3) Apariencia: UI original + persistencia Supabase. El servicio mantiene las firmas de compatibilidad.
+// 3) Apariencia: UI original + persistencia Supabase. Se preserva authSession de Supabase
+// para no acoplar los tests/servicios puros a módulos JSX del navegador.
 {
   write('src/components/UserSettingsModal.jsx',source('src/components/UserSettingsModal.jsx'));
 
@@ -69,7 +70,6 @@ console.log('Original HEAD:',sourceCommit);
   ua=ua.replace(/\bcreateImageBitmap\(/g,'window.createImageBitmap(');
   if(ua.includes('action:"save_user_preferences"')||ua.includes('action:"upload_user_background"'))throw new Error('userAppearance conserva transporte Apps Script');
   write('src/services/userAppearance.js',ua);
-  write('src/services/authSession.js',source('src/services/authSession.js'));
 }
 
 // 4) Login: apariencia actual de la original, autenticación sigue usando el adapter Supabase existente.
@@ -108,7 +108,6 @@ write('docs/original-parity.json',JSON.stringify({
 },null,2)+'\n');
 
 // El auditor exige igualdad exacta solo para archivos sin adaptación de backend.
-// Este filtro pasó revisión manual y no contiene lecturas/escrituras remotas.
 write('src/modules/home/ViewBienvenidaProjectFilter.jsx',source('src/modules/home/ViewBienvenidaProjectFilter.jsx'));
 
 console.log('Port funcional final preparado contra',sourceCommit);
