@@ -23,7 +23,8 @@ console.log('Original HEAD:',sourceCommit);
 `async function postCentralCatalog(rows){\n  return replaceWearCatalog(rows);\n}\n\nasync function getCentralCatalog(){\n  return getWearCatalog();\n}\n\nfunction ArticleUsageTooltip`);
   if(s.includes('APPS_SCRIPT_URL'))throw new Error('DesgasteView todavía referencia Apps Script');
   write('src/modules/mantenimiento/DesgasteView.jsx',s);
-  write('src/modules/mantenimiento/wearSidebarBridge.js',source('src/modules/mantenimiento/wearSidebarBridge.js'));
+  const wearBridge=source('src/modules/mantenimiento/wearSidebarBridge.js').replace(/\bgetComputedStyle\(/g,'window.getComputedStyle(');
+  write('src/modules/mantenimiento/wearSidebarBridge.js',wearBridge);
 }
 
 // 2) MantenimientoRoute: merge manual. Conserva universo PM Supabase y agrega Desgaste.
@@ -65,6 +66,7 @@ console.log('Original HEAD:',sourceCommit);
   ua='import {requireSupabase} from "./supabaseClient.js";\n'+ua;
   ua=ua.replace(/async function postAppearance\([\s\S]*?export async function fileToBackgroundDataUrl/,
 `export async function loadCentralAppearance(_url,email){\n  const {data,error}=await requireSupabase().rpc("app_get_user_appearance",{p_email:String(email||"")});\n  if(error)throw error;\n  return normalizeAppearance({...data?.appearance,savedBackgrounds:data?.backgrounds||[]});\n}\nexport async function uploadUserBackground(_url,email,dataUrl,name){\n  const {data,error}=await requireSupabase().rpc("app_upload_user_background",{p_email:String(email||""),p_name:String(name||"Mi fondo"),p_data_url:String(dataUrl||"")});\n  if(error)throw error;\n  return data;\n}\nexport async function saveCentralAppearance(_url,email,prefs){\n  const normalized=normalizeAppearance(prefs);\n  const {data,error}=await requireSupabase().rpc("app_save_user_appearance",{p_email:String(email||""),p_appearance:normalized});\n  if(error)throw error;\n  return normalizeAppearance({...normalized,...data?.appearance,savedBackgrounds:data?.backgrounds||data?.appearance?.savedBackgrounds||normalized.savedBackgrounds});\n}\nexport async function fileToBackgroundDataUrl`);
+  ua=ua.replace(/\bcreateImageBitmap\(/g,'window.createImageBitmap(');
   if(ua.includes('action:"save_user_preferences"')||ua.includes('action:"upload_user_background"'))throw new Error('userAppearance conserva transporte Apps Script');
   write('src/services/userAppearance.js',ua);
   write('src/services/authSession.js',source('src/services/authSession.js'));
