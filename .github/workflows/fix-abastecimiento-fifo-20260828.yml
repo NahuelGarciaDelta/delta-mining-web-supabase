@@ -1,3 +1,4 @@
+# run 2026-08-28
 name: Fix Abastecimiento FIFO parity 2026-08-28
 on:
   push:
@@ -20,35 +21,23 @@ jobs:
           p=Path('src/modules/abastecimiento/AbastecimientoModule.jsx')
           o=Path('/tmp/original/src/modules/abastecimiento/AbastecimientoModule.jsx').read_text()
           s=p.read_text()
-          # 1. date parser used by FIFO allocation
           if 'const parseChronoDateMs=' not in s:
               anchor='const RABA03_CLOSED_STORAGE_KEY = "dm_raba03_solicitudes_cerradas_manual_v1";\n'
-              a=o.index('const parseChronoDateMs=')
-              b=o.index('const STOCK_CONTROL_COLUMNS',a)
+              a=o.index('const parseChronoDateMs='); b=o.index('const STOCK_CONTROL_COLUMNS',a)
               s=s.replace(anchor,anchor+o[a:b],1)
-          # 2. normalizeRow + exact FIFO allocator copied from functional source of truth
-          a=o.index('  const normalizeRow=useCallback')
-          b=o.index('  const buildSolicitudKey=useCallback',a)
-          block=o[a:b]
-          ta=s.index('  const normalizeRow=useCallback')
-          tb=s.index('  const buildSolicitudKey=useCallback',ta)
-          s=s[:ta]+block+s[tb:]
-          # 3. exact mapping semantics from original; keep Supabase read/write transport
-          oa=o.index('  const mapRaba03Rows=useCallback')
-          ob=o.index('  const loadRaba03=useCallback',oa)
-          mapblock=o[oa:ob]
-          ta=s.index('  const mapRaba03Rows=useCallback')
-          tb=s.index('  const loadRaba03=useCallback',ta)
-          s=s[:ta]+mapblock+s[tb:]
+          a=o.index('  const normalizeRow=useCallback'); b=o.index('  const buildSolicitudKey=useCallback',a)
+          ta=s.index('  const normalizeRow=useCallback'); tb=s.index('  const buildSolicitudKey=useCallback',ta)
+          s=s[:ta]+o[a:b]+s[tb:]
+          oa=o.index('  const mapRaba03Rows=useCallback'); ob=o.index('  const loadRaba03=useCallback',oa)
+          ta=s.index('  const mapRaba03Rows=useCallback'); tb=s.index('  const loadRaba03=useCallback',ta)
+          s=s[:ta]+o[oa:ob]+s[tb:]
           old='''      const sentMap=Array.isArray(remitosOverride)?buildSentByCode(remitosOverride):sentByCodeRef.current;\n      const normalizedRows=mapRaba03Rows(raw,sentMap);'''
           new='''      const sourceRemitos=Array.isArray(remitosOverride)?remitosOverride:remitos;\n      const normalizedRows=mapRaba03Rows(raw,sourceRemitos);'''
           if old not in s: raise SystemExit('Supabase loadRaba03 allocation pattern not found')
           s=s.replace(old,new,1)
           s=s.replace('  },[mapRaba03Rows,buildSentByCode]);','  },[mapRaba03Rows,remitos]);',1)
-          # recalc effect must use remito objects, not aggregated totals
           s=s.replace('const refresh=()=>setRows(mapRaba03Rows(rawRaba03RowsRef.current,sentByCode));','const refresh=()=>setRows(mapRaba03Rows(rawRaba03RowsRef.current,remitos));',1)
           p.write_text(s)
-          # Assertions: prevent the exact regression from being published.
           x=p.read_text()
           assert 'const allocateRemitosToRequests=useCallback' in x
           assert 'const parseChronoDateMs=' in x
