@@ -1,57 +1,36 @@
-name: Finalize original parity
+name: Validate Supabase parity
+
 on:
   push:
     branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+  schedule:
+    - cron: '17 * * * *'
+
 permissions:
-  contents: write
+  contents: read
+
 jobs:
-  finalize:
+  verify:
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
-      - uses: actions/checkout@v4
-        with: {fetch-depth: 0}
-      - run: git clone --depth 1 https://github.com/NahuelGarciaDelta/delta-mining-ops.git /tmp/original
-      - name: Port original RABA03 FIFO allocation keeping Supabase transport
-        run: |
-          python3 - <<'PY'
-          from pathlib import Path
-          p=Path('src/modules/abastecimiento/AbastecimientoModule.jsx')
-          s=p.read_text()
-          o=Path('/tmp/original/src/modules/abastecimiento/AbastecimientoModule.jsx').read_text()
-          if 'const allocateRemitosToRequests=useCallback' not in s:
-            if 'const parseChronoDateMs=' not in s:
-              anchor='const RABA03_CLOSED_STORAGE_KEY = "dm_raba03_solicitudes_cerradas_manual_v1";\n'
-              a=o.index('const parseChronoDateMs='); b=o.index('const STOCK_CONTROL_COLUMNS',a)
-              s=s.replace(anchor,anchor+o[a:b],1)
-            a=o.index('  const normalizeRow=useCallback'); b=o.index('  const buildSolicitudKey=useCallback',a)
-            ta=s.index('  const normalizeRow=useCallback'); tb=s.index('  const buildSolicitudKey=useCallback',ta)
-            s=s[:ta]+o[a:b]+s[tb:]
-            a=o.index('  const mapRaba03Rows=useCallback'); b=o.index('  const loadRaba03=useCallback',a)
-            ta=s.index('  const mapRaba03Rows=useCallback'); tb=s.index('  const loadRaba03=useCallback',ta)
-            s=s[:ta]+o[a:b]+s[tb:]
-            old='      const sentMap=Array.isArray(remitosOverride)?buildSentByCode(remitosOverride):sentByCodeRef.current;\n      const normalizedRows=mapRaba03Rows(raw,sentMap);'
-            new='      const sourceRemitos=Array.isArray(remitosOverride)?remitosOverride:remitos;\n      const normalizedRows=mapRaba03Rows(raw,sourceRemitos);'
-            if old not in s: raise SystemExit('old allocation not found')
-            s=s.replace(old,new,1).replace('  },[mapRaba03Rows,buildSentByCode]);','  },[mapRaba03Rows,remitos]);',1)
-            s=s.replace('const refresh=()=>setRows(mapRaba03Rows(rawRaba03RowsRef.current,sentByCode));','const refresh=()=>setRows(mapRaba03Rows(rawRaba03RowsRef.current,remitos));',1)
-          p.write_text(s)
-          x=p.read_text()
-          assert 'const allocateRemitosToRequests=useCallback' in x
-          assert 'const mapRaba03Rows=useCallback((raw=[],sourceRemitos=[])' in x
-          PY
-      - uses: actions/setup-node@v4
-        with: {node-version: 22, cache: npm}
-      - run: npm ci
-      - run: npm run verify:all
-      - name: Commit verified source fix
-        run: |
-          git config user.name 'github-actions[bot]'
-          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
-          git add src/modules/abastecimiento/AbastecimientoModule.jsx
-          if git diff --cached --quiet; then
-            echo "Source already fixed."
-            exit 0
-          fi
-          git commit -m 'Restore original Abastecimiento allocation on Supabase'
-          git push origin main
+      - name: Checkout Supabase app
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - name: Install dependencies
+        run: npm ci
+      - name: Validate imports, security, ESLint and tests
+        run: npm run validate
+      - name: Build production bundle
+        run: npm run build
+      - name: Audit parity against delta-mining-ops
+        run: npm run audit:parity
