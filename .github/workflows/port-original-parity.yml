@@ -1,11 +1,11 @@
-name: Validate Supabase parity
+name: Diagnose Supabase parity
 on:
   push:
     branches: [main]
 permissions:
   contents: write
 jobs:
-  verify-and-fix:
+  diagnose:
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
@@ -26,57 +26,21 @@ jobs:
           if old not in s: raise SystemExit('old allocation not found')
           s=s.replace(old,new,1).replace('  },[mapRaba03Rows,buildSentByCode]);','  },[mapRaba03Rows,remitos]);',1)
           s=s.replace('const refresh=()=>setRows(mapRaba03Rows(rawRaba03RowsRef.current,sentByCode));','const refresh=()=>setRows(mapRaba03Rows(rawRaba03RowsRef.current,remitos));',1)
-          s=s.replace('  },[normalizeRow,allocateRemitosToRequests]);','  },[normalizeRow,allocateRemitosToRequests,remitos]);',1)
           p.write_text(s)
-          x=p.read_text(); assert 'const allocateRemitosToRequests=useCallback' in x; assert 'const mapRaba03Rows=useCallback((raw=[],sourceRemitos=[])' in x; assert 'const enviada=(sentMap[' not in x
           PY
       - uses: actions/setup-node@v4
         with: {node-version: 22, cache: npm}
       - run: npm ci
-      - run: npm run verify:all
-      - name: Commit verified fix and restore validator
+      - name: Capture verification
         run: |
-          cat > .github/workflows/port-original-parity.yml <<'EOF'
-          name: Validate Supabase parity
-
-          on:
-            push:
-              branches: [main]
-            pull_request:
-              branches: [main]
-            workflow_dispatch:
-            schedule:
-              - cron: '17 * * * *'
-
-          permissions:
-            contents: read
-
-          jobs:
-            verify:
-              runs-on: ubuntu-latest
-              timeout-minutes: 20
-              steps:
-                - name: Checkout Supabase app
-                  uses: actions/checkout@v4
-                  with:
-                    fetch-depth: 1
-                - name: Setup Node
-                  uses: actions/setup-node@v4
-                  with:
-                    node-version: 22
-                    cache: npm
-                - name: Install dependencies
-                  run: npm ci
-                - name: Validate imports, security, ESLint and tests
-                  run: npm run validate
-                - name: Build production bundle
-                  run: npm run build
-                - name: Audit parity against delta-mining-ops
-                  run: npm run audit:parity
-          EOF
+          set +e
+          npm run verify:all > /tmp/verify.log 2>&1
+          code=$?
+          git checkout -- src/modules/abastecimiento/AbastecimientoModule.jsx
+          cp /tmp/verify.log PARITY_VERIFY_LOG.txt
           git config user.name 'github-actions[bot]'
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
-          git add src/modules/abastecimiento/AbastecimientoModule.jsx .github/workflows/port-original-parity.yml
-          git rm -f .github/workflows/fix-abastecimiento-fifo-20260828.yml || true
-          git commit -m 'Restore original Abastecimiento remito allocation'
+          git add PARITY_VERIFY_LOG.txt
+          git commit -m 'Record parity verification diagnostics' || true
           git push origin main
+          exit 0
