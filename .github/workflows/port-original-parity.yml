@@ -1,46 +1,83 @@
-name: Diagnose Supabase parity
+name: Finalize original parity
 on:
   push:
     branches: [main]
 permissions:
   contents: write
 jobs:
-  diagnose:
+  finalize:
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
       - uses: actions/checkout@v4
         with: {fetch-depth: 0}
       - run: git clone --depth 1 https://github.com/NahuelGarciaDelta/delta-mining-ops.git /tmp/original
-      - name: Patch exact original allocation
+      - name: Port original RABA03 FIFO allocation keeping Supabase transport
         run: |
           python3 - <<'PY'
           from pathlib import Path
           p=Path('src/modules/abastecimiento/AbastecimientoModule.jsx'); s=p.read_text(); o=Path('/tmp/original/src/modules/abastecimiento/AbastecimientoModule.jsx').read_text()
-          if 'const parseChronoDateMs=' not in s:
-            anchor='const RABA03_CLOSED_STORAGE_KEY = "dm_raba03_solicitudes_cerradas_manual_v1";\n'; a=o.index('const parseChronoDateMs='); b=o.index('const STOCK_CONTROL_COLUMNS',a); s=s.replace(anchor,anchor+o[a:b],1)
-          a=o.index('  const normalizeRow=useCallback'); b=o.index('  const buildSolicitudKey=useCallback',a); ta=s.index('  const normalizeRow=useCallback'); tb=s.index('  const buildSolicitudKey=useCallback',ta); s=s[:ta]+o[a:b]+s[tb:]
-          a=o.index('  const mapRaba03Rows=useCallback'); b=o.index('  const loadRaba03=useCallback',a); ta=s.index('  const mapRaba03Rows=useCallback'); tb=s.index('  const loadRaba03=useCallback',ta); s=s[:ta]+o[a:b]+s[tb:]
-          old='      const sentMap=Array.isArray(remitosOverride)?buildSentByCode(remitosOverride):sentByCodeRef.current;\n      const normalizedRows=mapRaba03Rows(raw,sentMap);'
-          new='      const sourceRemitos=Array.isArray(remitosOverride)?remitosOverride:remitos;\n      const normalizedRows=mapRaba03Rows(raw,sourceRemitos);'
-          if old not in s: raise SystemExit('old allocation not found')
-          s=s.replace(old,new,1).replace('  },[mapRaba03Rows,buildSentByCode]);','  },[mapRaba03Rows,remitos]);',1)
-          s=s.replace('const refresh=()=>setRows(mapRaba03Rows(rawRaba03RowsRef.current,sentByCode));','const refresh=()=>setRows(mapRaba03Rows(rawRaba03RowsRef.current,remitos));',1)
+          if 'const allocateRemitosToRequests=useCallback' not in s:
+            if 'const parseChronoDateMs=' not in s:
+              anchor='const RABA03_CLOSED_STORAGE_KEY = "dm_raba03_solicitudes_cerradas_manual_v1";\n'; a=o.index('const parseChronoDateMs='); b=o.index('const STOCK_CONTROL_COLUMNS',a); s=s.replace(anchor,anchor+o[a:b],1)
+            a=o.index('  const normalizeRow=useCallback'); b=o.index('  const buildSolicitudKey=useCallback',a); ta=s.index('  const normalizeRow=useCallback'); tb=s.index('  const buildSolicitudKey=useCallback',ta); s=s[:ta]+o[a:b]+s[tb:]
+            a=o.index('  const mapRaba03Rows=useCallback'); b=o.index('  const loadRaba03=useCallback',a); ta=s.index('  const mapRaba03Rows=useCallback'); tb=s.index('  const loadRaba03=useCallback',ta); s=s[:ta]+o[a:b]+s[tb:]
+            old='      const sentMap=Array.isArray(remitosOverride)?buildSentByCode(remitosOverride):sentByCodeRef.current;\n      const normalizedRows=mapRaba03Rows(raw,sentMap);'
+            new='      const sourceRemitos=Array.isArray(remitosOverride)?remitosOverride:remitos;\n      const normalizedRows=mapRaba03Rows(raw,sourceRemitos);'
+            if old not in s: raise SystemExit('old allocation not found')
+            s=s.replace(old,new,1).replace('  },[mapRaba03Rows,buildSentByCode]);','  },[mapRaba03Rows,remitos]);',1)
+            s=s.replace('const refresh=()=>setRows(mapRaba03Rows(rawRaba03RowsRef.current,sentByCode));','const refresh=()=>setRows(mapRaba03Rows(rawRaba03RowsRef.current,remitos));',1)
           p.write_text(s)
+          x=p.read_text(); assert 'const allocateRemitosToRequests=useCallback' in x; assert 'const mapRaba03Rows=useCallback((raw=[],sourceRemitos=[])' in x
           PY
       - uses: actions/setup-node@v4
         with: {node-version: 22, cache: npm}
       - run: npm ci
-      - name: Capture verification
+      - run: npm run verify:all
+      - name: Commit verified parity and restore permanent validator
         run: |
-          set +e
-          npm run verify:all > /tmp/verify.log 2>&1
-          code=$?
-          git checkout -- src/modules/abastecimiento/AbastecimientoModule.jsx
-          cp /tmp/verify.log PARITY_VERIFY_LOG.txt
+          rm -f PARITY_VERIFY_LOG.txt
+          cat > .github/workflows/port-original-parity.yml <<'EOF'
+          name: Validate Supabase parity
+
+          on:
+            push:
+              branches: [main]
+            pull_request:
+              branches: [main]
+            workflow_dispatch:
+            schedule:
+              - cron: '17 * * * *'
+
+          permissions:
+            contents: read
+
+          jobs:
+            verify:
+              runs-on: ubuntu-latest
+              timeout-minutes: 20
+              steps:
+                - name: Checkout Supabase app
+                  uses: actions/checkout@v4
+                  with:
+                    fetch-depth: 1
+                - name: Setup Node
+                  uses: actions/setup-node@v4
+                  with:
+                    node-version: 22
+                    cache: npm
+                - name: Install dependencies
+                  run: npm ci
+                - name: Validate imports, security, ESLint and tests
+                  run: npm run validate
+                - name: Build production bundle
+                  run: npm run build
+                - name: Audit parity against delta-mining-ops
+                  run: npm run audit:parity
+          EOF
           git config user.name 'github-actions[bot]'
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
-          git add PARITY_VERIFY_LOG.txt
-          git commit -m 'Record parity verification diagnostics' || true
+          git add src/modules/abastecimiento/AbastecimientoModule.jsx tests/abastecimiento-regression.test.mjs .github/workflows/port-original-parity.yml
+          git add -u PARITY_VERIFY_LOG.txt || true
+          git commit -m 'Restore original Abastecimiento allocation on Supabase'
           git push origin main
-          exit 0
