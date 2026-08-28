@@ -17,7 +17,9 @@ test("Abastecimiento usa cache inmediato y revalida remitos/estados sin bloquear
   assert.match(moduleSource, /Promise\.allSettled\(\[/);
   assert.match(moduleSource, /loadRaba03\(\{silent:hasCachedRows,remitosOverride:sharedRemitos\}\)/);
   assert.match(moduleSource, /fetchAbastecimiento/);
-  assert.match(moduleSource, /const sentMap=Array\.isArray\(remitosOverride\)\?buildSentByCode\(remitosOverride\):sentByCodeRef\.current/);
+  assert.match(moduleSource, /const sourceRemitos=Array\.isArray\(remitosOverride\)\?remitosOverride:remitos/);
+  assert.match(moduleSource, /allocateRemitosToRequests/);
+  assert.match(moduleSource, /mapRaba03Rows\(raw,sourceRemitos\)/);
 });
 
 test("App conserva todas las rutas de Abastecimiento y su Error Boundary", () => {
