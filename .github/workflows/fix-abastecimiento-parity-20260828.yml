@@ -32,37 +32,37 @@ jobs:
           s=p.read_text(encoding='utf-8')
 
           replacements=[
-            (
-              'const normalizeRow=useCallback((r,idx,sentMap={})=>{',
-              'const normalizeRow=useCallback((r,idx)=>{'
-            ),
-            (
-              'const enviada=(sentMap[`${codeNorm}__${centroCostoNorm}`]||0)+(sentMap[`${codeNorm}__*`]||0);',
-              'const enviada=0;'
-            ),
-            (
-              '''const mapRaba03Rows=useCallback((raw=[],sentMap={})=>raw.map((row,index)=>normalizeRow(row,index,sentMap)).filter(r=>\n    [r.empresa,r.fechaSolicitud,r.fechaRequerida,r.pedidoPor,r.centroCosto,r.codigoArticulo,r.descripcion,r.cantidadSolicitada]\n      .some(v=>String(v||"").trim()) &&\n    !String(r.empresa||"").toLowerCase().includes("aprobado") &&\n    !String(r.empresa||"").toLowerCase().includes("empresa")\n  ),[normalizeRow]);''',
-              '''const mapRaba03Rows=useCallback((raw=[],sourceRemitos=[])=>{\n    const base=raw.map((row,index)=>normalizeRow(row,index)).filter(r=>\n      [r.empresa,r.fechaSolicitud,r.fechaRequerida,r.pedidoPor,r.centroCosto,r.codigoArticulo,r.descripcion,r.cantidadSolicitada]\n        .some(v=>String(v||"").trim()) &&\n      !String(r.empresa||"").toLowerCase().includes("aprobado") &&\n      !String(r.empresa||"").toLowerCase().includes("empresa")\n    );\n    return allocateRemitosToRequests(base,sourceRemitos).rows;\n  },[normalizeRow,allocateRemitosToRequests]);'''
-            ),
-            (
-              '''const sentMap=Array.isArray(remitosOverride)?buildSentByCode(remitosOverride):sentByCodeRef.current;\n      const normalizedRows=mapRaba03Rows(raw,sentMap);''',
-              '''const sourceRemitos=Array.isArray(remitosOverride)?remitosOverride:remitos;\n      const normalizedRows=mapRaba03Rows(raw,sourceRemitos);'''
-            ),
-            (
-              '},[mapRaba03Rows,buildSentByCode]);',
-              '},[mapRaba03Rows,remitos]);'
-            )
+            ('const normalizeRow=useCallback((r,idx,sentMap={})=>{','const normalizeRow=useCallback((r,idx)=>{'),
+            ('const enviada=(sentMap[`${codeNorm}__${centroCostoNorm}`]||0)+(sentMap[`${codeNorm}__*`]||0);','const enviada=0;'),
+            ('''const mapRaba03Rows=useCallback((raw=[],sentMap={})=>raw.map((row,index)=>normalizeRow(row,index,sentMap)).filter(r=>\n    [r.empresa,r.fechaSolicitud,r.fechaRequerida,r.pedidoPor,r.centroCosto,r.codigoArticulo,r.descripcion,r.cantidadSolicitada]\n      .some(v=>String(v||"").trim()) &&\n    !String(r.empresa||"").toLowerCase().includes("aprobado") &&\n    !String(r.empresa||"").toLowerCase().includes("empresa")\n  ),[normalizeRow]);''','''const mapRaba03Rows=useCallback((raw=[],sourceRemitos=[])=>{\n    const base=raw.map((row,index)=>normalizeRow(row,index)).filter(r=>\n      [r.empresa,r.fechaSolicitud,r.fechaRequerida,r.pedidoPor,r.centroCosto,r.codigoArticulo,r.descripcion,r.cantidadSolicitada]\n        .some(v=>String(v||"").trim()) &&\n      !String(r.empresa||"").toLowerCase().includes("aprobado") &&\n      !String(r.empresa||"").toLowerCase().includes("empresa")\n    );\n    return allocateRemitosToRequests(base,sourceRemitos).rows;\n  },[normalizeRow,allocateRemitosToRequests]);'''),
+            ('''const sentMap=Array.isArray(remitosOverride)?buildSentByCode(remitosOverride):sentByCodeRef.current;\n      const normalizedRows=mapRaba03Rows(raw,sentMap);''','''const sourceRemitos=Array.isArray(remitosOverride)?remitosOverride:remitos;\n      const normalizedRows=mapRaba03Rows(raw,sourceRemitos);'''),
+            ('},[mapRaba03Rows,buildSentByCode]);','},[mapRaba03Rows,remitos]);')
           ]
           for old,new in replacements:
             count=s.count(old)
             if count != 1:
               raise SystemExit(f'Expected exactly one match, found {count}: {old[:100]!r}')
             s=s.replace(old,new,1)
+
+          if 'const parseChronoDateMs=' not in s:
+            marker='const RABA03_DATA_CACHE_KEY = "abastecimiento_raba03_rows_v1";'
+            parser='''\nconst parseChronoDateMs=(value)=>{\n  const raw=String(value||"").trim();\n  if(!raw)return 0;\n  let m=raw.match(/^(\\d{4})-(\\d{1,2})-(\\d{1,2})/);\n  if(m)return new Date(Number(m[1]),Number(m[2])-1,Number(m[3])).getTime();\n  m=raw.match(/^(\\d{1,2})[\\/-](\\d{1,2})[\\/-](\\d{2}|\\d{4})/);\n  if(m){let y=Number(m[3]);if(y<100)y+=2000;return new Date(y,Number(m[2])-1,Number(m[1])).getTime();}\n  const d=new Date(raw);\n  return Number.isNaN(d.getTime())?0:d.getTime();\n};'''
+            if marker not in s: raise SystemExit('Parser insertion marker not found')
+            s=s.replace(marker,marker+parser,1)
+
+          if 'const allocateRemitosToRequests=useCallback' not in s:
+            marker='  const buildSolicitudKey=useCallback((row)=>{'
+            allocator='''  const allocateRemitosToRequests=useCallback((requestRows=[],sourceRemitos=[])=>{\n    const rowsAllocated=(requestRows||[]).map(row=>({...row,cantidadEnviada:0,cantidadRestante:Math.max(0,toNumber(row.cantidadSolicitada)),_matchedRemitos:[]}));\n    const byKey=new Map();\n    rowsAllocated.forEach((row,index)=>{\n      const code=normCode(row.codigoArticulo);\n      const proyecto=normalizeCentroCosto(row.centroCosto);\n      if(!code||!proyecto)return;\n      const key=`${code}__${proyecto}`;\n      if(!byKey.has(key))byKey.set(key,[]);\n      byKey.get(key).push({row,index,fechaMs:parseChronoDateMs(row.fechaSolicitud)});\n    });\n    byKey.forEach(queue=>queue.sort((a,b)=>(a.fechaMs||0)-(b.fechaMs||0)||a.index-b.index));\n\n    const shipments=[];\n    (sourceRemitos||[]).forEach((remito,remitoIndex)=>{\n      const proyecto=normalizeCentroCosto(remito.proyecto||remito.observaciones||remito.destino||remito.centroCosto||remito.origen||"");\n      const fecha=remito.fecha||"";\n      const fechaMs=parseChronoDateMs(fecha);\n      (remito.items||[]).forEach((item,itemIndex)=>{\n        const code=normCode(item.codigo);\n        const cantidad=toNumber(item.cantidad);\n        if(!code||cantidad<=0)return;\n        shipments.push({\n          id:`${remito.id||remito.comprobante||"remito"}-${itemIndex}-${code}`,\n          code,proyecto,fecha,fechaMs,cantidad,\n          numero:remito.comprobante||"",\n          lugar:remito.destino||remito.observaciones||remito.origen||"",\n          insumo:item.descripcion||"",\n          remitoIndex,itemIndex,\n        });\n      });\n    });\n    shipments.sort((a,b)=>(a.fechaMs||0)-(b.fechaMs||0)||a.remitoIndex-b.remitoIndex||a.itemIndex-b.itemIndex);\n\n    const unmatched=[];\n    shipments.forEach(shipment=>{\n      let restanteEnvio=shipment.cantidad;\n      const key=shipment.proyecto?`${shipment.code}__${shipment.proyecto}`:"";\n      const queue=key?(byKey.get(key)||[]):[];\n      for(const req of queue){\n        if(restanteEnvio<=0)break;\n        if(req.fechaMs&&shipment.fechaMs&&req.fechaMs>shipment.fechaMs)continue;\n        const row=rowsAllocated[req.index];\n        const pendiente=Math.max(0,toNumber(row.cantidadSolicitada)-toNumber(row.cantidadEnviada));\n        if(pendiente<=0)continue;\n        const aplicado=Math.min(pendiente,restanteEnvio);\n        if(aplicado<=0)continue;\n        row.cantidadEnviada=toNumber(row.cantidadEnviada)+aplicado;\n        row.cantidadRestante=Math.max(0,toNumber(row.cantidadSolicitada)-row.cantidadEnviada);\n        row._matchedRemitos.push({numero:shipment.numero,fecha:formatDateLocal(shipment.fecha),cantidad:aplicado,lugar:shipment.lugar,insumo:shipment.insumo});\n        restanteEnvio-=aplicado;\n      }\n      if(restanteEnvio>0){\n        unmatched.push({\n          id:shipment.id,\n          codigoArticulo:shipment.code,\n          descripcion:shipment.insumo,\n          proyecto:shipment.proyecto||"SIN PROYECTO",\n          cantidadEnviada:restanteEnvio,\n          fechaEnvio:shipment.fecha,\n          numeroRemito:shipment.numero,\n        });\n      }\n    });\n    return {rows:rowsAllocated,unmatched};\n  },[normCode,toNumber,normalizeCentroCosto,formatDateLocal]);\n\n'''
+            if marker not in s: raise SystemExit('Allocator insertion marker not found')
+            s=s.replace(marker,allocator+marker,1)
+
           p.write_text(s,encoding='utf-8')
           PY
 
       - name: Assert Abastecimiento parity contract
         run: |
+          grep -F 'const parseChronoDateMs=' src/modules/abastecimiento/AbastecimientoModule.jsx
+          grep -F 'const allocateRemitosToRequests=useCallback' src/modules/abastecimiento/AbastecimientoModule.jsx
           grep -F 'const normalizeRow=useCallback((r,idx)=>{' src/modules/abastecimiento/AbastecimientoModule.jsx
           grep -F 'const enviada=0;' src/modules/abastecimiento/AbastecimientoModule.jsx
           grep -F 'return allocateRemitosToRequests(base,sourceRemitos).rows;' src/modules/abastecimiento/AbastecimientoModule.jsx
