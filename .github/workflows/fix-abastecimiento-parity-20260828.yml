@@ -1,0 +1,86 @@
+name: Fix Abastecimiento parity 2026-08-28
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - .github/workflows/fix-abastecimiento-parity-20260828.yml
+
+permissions:
+  contents: write
+
+jobs:
+  fix:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 0
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Restore original Abastecimiento allocation semantics
+        shell: bash
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          p=Path('src/modules/abastecimiento/AbastecimientoModule.jsx')
+          s=p.read_text(encoding='utf-8')
+
+          replacements=[
+            (
+              'const normalizeRow=useCallback((r,idx,sentMap={})=>{',
+              'const normalizeRow=useCallback((r,idx)=>{'
+            ),
+            (
+              'const enviada=(sentMap[`${codeNorm}__${centroCostoNorm}`]||0)+(sentMap[`${codeNorm}__*`]||0);',
+              'const enviada=0;'
+            ),
+            (
+              '''const mapRaba03Rows=useCallback((raw=[],sentMap={})=>raw.map((row,index)=>normalizeRow(row,index,sentMap)).filter(r=>\n    [r.empresa,r.fechaSolicitud,r.fechaRequerida,r.pedidoPor,r.centroCosto,r.codigoArticulo,r.descripcion,r.cantidadSolicitada]\n      .some(v=>String(v||"").trim()) &&\n    !String(r.empresa||"").toLowerCase().includes("aprobado") &&\n    !String(r.empresa||"").toLowerCase().includes("empresa")\n  ),[normalizeRow]);''',
+              '''const mapRaba03Rows=useCallback((raw=[],sourceRemitos=[])=>{\n    const base=raw.map((row,index)=>normalizeRow(row,index)).filter(r=>\n      [r.empresa,r.fechaSolicitud,r.fechaRequerida,r.pedidoPor,r.centroCosto,r.codigoArticulo,r.descripcion,r.cantidadSolicitada]\n        .some(v=>String(v||"").trim()) &&\n      !String(r.empresa||"").toLowerCase().includes("aprobado") &&\n      !String(r.empresa||"").toLowerCase().includes("empresa")\n    );\n    return allocateRemitosToRequests(base,sourceRemitos).rows;\n  },[normalizeRow,allocateRemitosToRequests]);'''
+            ),
+            (
+              '''const sentMap=Array.isArray(remitosOverride)?buildSentByCode(remitosOverride):sentByCodeRef.current;\n      const normalizedRows=mapRaba03Rows(raw,sentMap);''',
+              '''const sourceRemitos=Array.isArray(remitosOverride)?remitosOverride:remitos;\n      const normalizedRows=mapRaba03Rows(raw,sourceRemitos);'''
+            ),
+            (
+              '},[mapRaba03Rows,buildSentByCode]);',
+              '},[mapRaba03Rows,remitos]);'
+            )
+          ]
+          for old,new in replacements:
+            count=s.count(old)
+            if count != 1:
+              raise SystemExit(f'Expected exactly one match, found {count}: {old[:100]!r}')
+            s=s.replace(old,new,1)
+          p.write_text(s,encoding='utf-8')
+          PY
+
+      - name: Assert Abastecimiento parity contract
+        run: |
+          grep -F 'const normalizeRow=useCallback((r,idx)=>{' src/modules/abastecimiento/AbastecimientoModule.jsx
+          grep -F 'const enviada=0;' src/modules/abastecimiento/AbastecimientoModule.jsx
+          grep -F 'return allocateRemitosToRequests(base,sourceRemitos).rows;' src/modules/abastecimiento/AbastecimientoModule.jsx
+          grep -F 'const sourceRemitos=Array.isArray(remitosOverride)?remitosOverride:remitos;' src/modules/abastecimiento/AbastecimientoModule.jsx
+          ! grep -F 'normalizeRow(row,index,sentMap)' src/modules/abastecimiento/AbastecimientoModule.jsx
+
+      - name: Verify all
+        run: |
+          npm ci
+          npm run verify:all
+          git diff --check
+
+      - name: Commit verified fix
+        shell: bash
+        run: |
+          git config user.name "NahuelGarciaDelta"
+          git config user.email "nahuel.garcia@deltamining.com.ar"
+          git add src/modules/abastecimiento/AbastecimientoModule.jsx
+          git rm .github/workflows/fix-abastecimiento-parity-20260828.yml
+          git commit -m "Fix Abastecimiento remito allocation parity"
+          git push origin main
