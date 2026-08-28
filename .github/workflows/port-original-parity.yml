@@ -12,38 +12,29 @@ jobs:
       - uses: actions/checkout@v4
         with: {fetch-depth: 0}
       - run: git clone --depth 1 https://github.com/NahuelGarciaDelta/delta-mining-ops.git /tmp/original
-      - name: Restore original RABA03 allocation with Supabase transport
+      - name: Patch exact original allocation
         run: |
           python3 - <<'PY'
           from pathlib import Path
-          p=Path('src/modules/abastecimiento/AbastecimientoModule.jsx'); s=p.read_text()
-          o=Path('/tmp/original/src/modules/abastecimiento/AbastecimientoModule.jsx').read_text()
+          p=Path('src/modules/abastecimiento/AbastecimientoModule.jsx'); s=p.read_text(); o=Path('/tmp/original/src/modules/abastecimiento/AbastecimientoModule.jsx').read_text()
           if 'const parseChronoDateMs=' not in s:
-            anchor='const RABA03_CLOSED_STORAGE_KEY = "dm_raba03_solicitudes_cerradas_manual_v1";\n'
-            a=o.index('const parseChronoDateMs='); b=o.index('const STOCK_CONTROL_COLUMNS',a)
-            s=s.replace(anchor,anchor+o[a:b],1)
-          a=o.index('  const normalizeRow=useCallback'); b=o.index('  const buildSolicitudKey=useCallback',a)
-          ta=s.index('  const normalizeRow=useCallback'); tb=s.index('  const buildSolicitudKey=useCallback',ta)
-          s=s[:ta]+o[a:b]+s[tb:]
-          a=o.index('  const mapRaba03Rows=useCallback'); b=o.index('  const loadRaba03=useCallback',a)
-          ta=s.index('  const mapRaba03Rows=useCallback'); tb=s.index('  const loadRaba03=useCallback',ta)
-          s=s[:ta]+o[a:b]+s[tb:]
-          old='''      const sentMap=Array.isArray(remitosOverride)?buildSentByCode(remitosOverride):sentByCodeRef.current;\n      const normalizedRows=mapRaba03Rows(raw,sentMap);'''
-          new='''      const sourceRemitos=Array.isArray(remitosOverride)?remitosOverride:remitos;\n      const normalizedRows=mapRaba03Rows(raw,sourceRemitos);'''
-          if old not in s: raise SystemExit('loadRaba03 old allocation not found')
+            anchor='const RABA03_CLOSED_STORAGE_KEY = "dm_raba03_solicitudes_cerradas_manual_v1";\n'; a=o.index('const parseChronoDateMs='); b=o.index('const STOCK_CONTROL_COLUMNS',a); s=s.replace(anchor,anchor+o[a:b],1)
+          a=o.index('  const normalizeRow=useCallback'); b=o.index('  const buildSolicitudKey=useCallback',a); ta=s.index('  const normalizeRow=useCallback'); tb=s.index('  const buildSolicitudKey=useCallback',ta); s=s[:ta]+o[a:b]+s[tb:]
+          a=o.index('  const mapRaba03Rows=useCallback'); b=o.index('  const loadRaba03=useCallback',a); ta=s.index('  const mapRaba03Rows=useCallback'); tb=s.index('  const loadRaba03=useCallback',ta); s=s[:ta]+o[a:b]+s[tb:]
+          old='      const sentMap=Array.isArray(remitosOverride)?buildSentByCode(remitosOverride):sentByCodeRef.current;\n      const normalizedRows=mapRaba03Rows(raw,sentMap);'
+          new='      const sourceRemitos=Array.isArray(remitosOverride)?remitosOverride:remitos;\n      const normalizedRows=mapRaba03Rows(raw,sourceRemitos);'
+          if old not in s: raise SystemExit('old allocation not found')
           s=s.replace(old,new,1).replace('  },[mapRaba03Rows,buildSentByCode]);','  },[mapRaba03Rows,remitos]);',1)
           s=s.replace('const refresh=()=>setRows(mapRaba03Rows(rawRaba03RowsRef.current,sentByCode));','const refresh=()=>setRows(mapRaba03Rows(rawRaba03RowsRef.current,remitos));',1)
+          s=s.replace('  },[normalizeRow,allocateRemitosToRequests]);','  },[normalizeRow,allocateRemitosToRequests,remitos]);',1)
           p.write_text(s)
-          x=p.read_text()
-          assert 'const allocateRemitosToRequests=useCallback' in x
-          assert 'const mapRaba03Rows=useCallback((raw=[],sourceRemitos=[])' in x
-          assert 'const enviada=(sentMap[' not in x
+          x=p.read_text(); assert 'const allocateRemitosToRequests=useCallback' in x; assert 'const mapRaba03Rows=useCallback((raw=[],sourceRemitos=[])' in x; assert 'const enviada=(sentMap[' not in x
           PY
       - uses: actions/setup-node@v4
         with: {node-version: 22, cache: npm}
       - run: npm ci
       - run: npm run verify:all
-      - name: Restore permanent validation workflow and commit fix
+      - name: Commit verified fix and restore validator
         run: |
           cat > .github/workflows/port-original-parity.yml <<'EOF'
           name: Validate Supabase parity
@@ -69,22 +60,17 @@ jobs:
                   uses: actions/checkout@v4
                   with:
                     fetch-depth: 1
-
                 - name: Setup Node
                   uses: actions/setup-node@v4
                   with:
                     node-version: 22
                     cache: npm
-
                 - name: Install dependencies
                   run: npm ci
-
                 - name: Validate imports, security, ESLint and tests
                   run: npm run validate
-
                 - name: Build production bundle
                   run: npm run build
-
                 - name: Audit parity against delta-mining-ops
                   run: npm run audit:parity
           EOF
