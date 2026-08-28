@@ -36,6 +36,16 @@ const RABA03_EXTRA_COLUMNS = [
 const RABA08_STORAGE_KEY = "dm_raba08_remitos_v1";
 const RABA03_REJECTED_STORAGE_KEY = "dm_raba03_solicitudes_rechazadas_v1";
 const RABA03_CLOSED_STORAGE_KEY = "dm_raba03_solicitudes_cerradas_manual_v1";
+const parseChronoDateMs=(value)=>{
+  const raw=String(value||"").trim();
+  if(!raw)return 0;
+  let m=raw.match(/^(\d{4})-(\d{1,2})-(\d{1,2})/);
+  if(m)return new Date(Number(m[1]),Number(m[2])-1,Number(m[3])).getTime();
+  m=raw.match(/^(\d{1,2})[\/-](\d{1,2})[\/-](\d{2}|\d{4})/);
+  if(m){let y=Number(m[3]);if(y<100)y+=2000;return new Date(y,Number(m[2])-1,Number(m[1])).getTime();}
+  const d=new Date(raw);
+  return Number.isNaN(d.getTime())?0:d.getTime();
+};
 const RABA03_DATA_CACHE_KEY = "abastecimiento_raba03_rows_v1";
 const ABASTECIMIENTO_FETCH_TIMEOUT_MS = 15000;
 
@@ -546,7 +556,7 @@ export function AbastecimientoModule({initialTab="solicitudes",readOnly=false,as
     return "";
   },[formatDateLocal]);
 
-  const normalizeRow=useCallback((r,idx,sentMap={})=>{
+  const normalizeRow=useCallback((r,idx)=>{
     // Para N° de solicitud / N° de pedido se exige coincidencia EXACTA de encabezado.
     // Así nunca se confunde "N° de pedido" con la columna "Pedido por".
     const pickExact=(obj,names)=>{
@@ -563,8 +573,8 @@ export function AbastecimientoModule({initialTab="solicitudes",readOnly=false,as
     const centroCostoRaw=String(pick(r,["Centro de Costo","Centro de costo","Proyecto","CC"])||"").trim();
     const centroCostoNorm=normalizeCentroCosto(centroCostoRaw);
     const codeNorm=normCode(codigo);
-    const enviada=(sentMap[`${codeNorm}__${centroCostoNorm}`]||0)+(sentMap[`${codeNorm}__*`]||0);
-    const restante=Math.max(0,solicitada-enviada);
+    const enviada=0;
+    const restante=Math.max(0,solicitada);
     const pedidoRaw=pickExact(r,["N° de pedido","Nº de pedido","N de pedido","Numero de pedido","Número de pedido"]);
     const solicitudLegacy=pickExact(r,["N° de solicitud","Nº de solicitud","N de solicitud","Numero de solicitud","Número de solicitud","Solicitud"]);
     const fechaSolicitudRaw=pick(r,["Fecha de solicitud","Fecha solicitud","F. Sol."]);
@@ -587,6 +597,74 @@ export function AbastecimientoModule({initialTab="solicitudes",readOnly=false,as
       cantidadRestante:restante
     };
   },[formatDateLocal,pick,normCode,toNumber,normalizeCentroCosto,normalizeEmpresa,numeroSolicitudHistorica]);
+
+  const allocateRemitosToRequests=useCallback((requestRows=[],sourceRemitos=[])=>{
+    const rowsAllocated=(requestRows||[]).map(row=>({...row,cantidadEnviada:0,cantidadRestante:Math.max(0,toNumber(row.cantidadSolicitada)),_matchedRemitos:[]}));
+    const byKey=new Map();
+    rowsAllocated.forEach((row,index)=>{
+      const code=normCode(row.codigoArticulo);
+      const proyecto=normalizeCentroCosto(row.centroCosto);
+      if(!code||!proyecto)return;
+      const key=`${code}__${proyecto}`;
+      if(!byKey.has(key))byKey.set(key,[]);
+      byKey.get(key).push({row,index,fechaMs:parseChronoDateMs(row.fechaSolicitud)});
+    });
+    byKey.forEach(queue=>queue.sort((a,b)=>(a.fechaMs||0)-(b.fechaMs||0)||a.index-b.index));
+
+    const shipments=[];
+    (sourceRemitos||[]).forEach((remito,remitoIndex)=>{
+      const proyecto=normalizeCentroCosto(remito.proyecto||remito.observaciones||remito.destino||remito.centroCosto||remito.origen||"");
+      const fecha=remito.fecha||"";
+      const fechaMs=parseChronoDateMs(fecha);
+      (remito.items||[]).forEach((item,itemIndex)=>{
+        const code=normCode(item.codigo);
+        const cantidad=toNumber(item.cantidad);
+        if(!code||cantidad<=0)return;
+        shipments.push({
+          id:`${remito.id||remito.comprobante||"remito"}-${itemIndex}-${code}`,
+          code,proyecto,fecha,fechaMs,cantidad,
+          numero:remito.comprobante||"",
+          lugar:remito.destino||remito.observaciones||remito.origen||"",
+          insumo:item.descripcion||"",
+          remitoIndex,itemIndex,
+        });
+      });
+    });
+    shipments.sort((a,b)=>(a.fechaMs||0)-(b.fechaMs||0)||a.remitoIndex-b.remitoIndex||a.itemIndex-b.itemIndex);
+
+    const unmatched=[];
+    shipments.forEach(shipment=>{
+      let restanteEnvio=shipment.cantidad;
+      const key=shipment.proyecto?`${shipment.code}__${shipment.proyecto}`:"";
+      const queue=key?(byKey.get(key)||[]):[];
+      for(const req of queue){
+        if(restanteEnvio<=0)break;
+        // A shipment can only satisfy a request that already existed on shipment date.
+        if(req.fechaMs&&shipment.fechaMs&&req.fechaMs>shipment.fechaMs)continue;
+        const row=rowsAllocated[req.index];
+        const pendiente=Math.max(0,toNumber(row.cantidadSolicitada)-toNumber(row.cantidadEnviada));
+        if(pendiente<=0)continue;
+        const aplicado=Math.min(pendiente,restanteEnvio);
+        if(aplicado<=0)continue;
+        row.cantidadEnviada=toNumber(row.cantidadEnviada)+aplicado;
+        row.cantidadRestante=Math.max(0,toNumber(row.cantidadSolicitada)-row.cantidadEnviada);
+        row._matchedRemitos.push({numero:shipment.numero,fecha:formatDateLocal(shipment.fecha),cantidad:aplicado,lugar:shipment.lugar,insumo:shipment.insumo});
+        restanteEnvio-=aplicado;
+      }
+      if(restanteEnvio>0){
+        unmatched.push({
+          id:shipment.id,
+          codigoArticulo:shipment.code,
+          descripcion:shipment.insumo,
+          proyecto:shipment.proyecto||"SIN PROYECTO",
+          cantidadEnviada:restanteEnvio,
+          fechaEnvio:shipment.fecha,
+          numeroRemito:shipment.numero,
+        });
+      }
+    });
+    return {rows:rowsAllocated,unmatched};
+  },[normCode,toNumber,normalizeCentroCosto,formatDateLocal]);
 
   const buildSolicitudKey=useCallback((row)=>{
     return buildSolicitudStableKeyFromParts({
@@ -779,12 +857,15 @@ export function AbastecimientoModule({initialTab="solicitudes",readOnly=false,as
     }
   },[rows,selectedReopenKeys,closedSolicitudes,buildSolicitudKey,postEstadoSolicitud,loadEstadosSolicitudesCompartidos]);
 
-  const mapRaba03Rows=useCallback((raw=[],sentMap={})=>raw.map((row,index)=>normalizeRow(row,index,sentMap)).filter(r=>
-    [r.empresa,r.fechaSolicitud,r.fechaRequerida,r.pedidoPor,r.centroCosto,r.codigoArticulo,r.descripcion,r.cantidadSolicitada]
-      .some(v=>String(v||"").trim()) &&
-    !String(r.empresa||"").toLowerCase().includes("aprobado") &&
-    !String(r.empresa||"").toLowerCase().includes("empresa")
-  ),[normalizeRow]);
+  const mapRaba03Rows=useCallback((raw=[],sourceRemitos=[])=>{
+    const base=raw.map((row,index)=>normalizeRow(row,index)).filter(r=>
+      [r.empresa,r.fechaSolicitud,r.fechaRequerida,r.pedidoPor,r.centroCosto,r.codigoArticulo,r.descripcion,r.cantidadSolicitada]
+        .some(v=>String(v||"").trim()) &&
+      !String(r.empresa||"").toLowerCase().includes("aprobado") &&
+      !String(r.empresa||"").toLowerCase().includes("empresa")
+    );
+    return allocateRemitosToRequests(base,sourceRemitos).rows;
+  },[normalizeRow,allocateRemitosToRequests]);
 
   const loadRaba03=useCallback(async({silent=false,remitosOverride=null}={})=>{
     if(!silent){
@@ -796,8 +877,8 @@ export function AbastecimientoModule({initialTab="solicitudes",readOnly=false,as
       if(!json?.ok)throw new Error("No se pudo leer RABA03 desde Supabase");
       const raw=Array.isArray(json.raba03)?json.raba03:[];
       rawRaba03RowsRef.current=raw;
-      const sentMap=Array.isArray(remitosOverride)?buildSentByCode(remitosOverride):sentByCodeRef.current;
-      const normalizedRows=mapRaba03Rows(raw,sentMap);
+      const sourceRemitos=Array.isArray(remitosOverride)?remitosOverride:remitos;
+      const normalizedRows=mapRaba03Rows(raw,sourceRemitos);
       setRows(normalizedRows);
       writeCachedSource(RABA03_DATA_CACHE_KEY,{ok:true,data:normalizedRows,meta:{updatedAt:new Date().toISOString(),rows:normalizedRows.length}}).catch(()=>{});
     }catch(err){
@@ -810,7 +891,7 @@ export function AbastecimientoModule({initialTab="solicitudes",readOnly=false,as
     }finally{
       if(!silent)setLoading(false);
     }
-  },[mapRaba03Rows,buildSentByCode]);
+  },[mapRaba03Rows,remitos]);
 
   // Carga inicial stale-while-revalidate: primero pinta la última copia local
   // y luego sincroniza remitos/estados en paralelo. Nunca queda esperando una
@@ -874,7 +955,7 @@ export function AbastecimientoModule({initialTab="solicitudes",readOnly=false,as
   // copia de RABA03 ya cargada, sin nueva consulta y sin mostrar ningún loader.
   useEffect(()=>{
     if(!raba03InitialLoadDoneRef.current||!rawRaba03RowsRef.current.length)return;
-    const refresh=()=>setRows(mapRaba03Rows(rawRaba03RowsRef.current,sentByCode));
+    const refresh=()=>setRows(mapRaba03Rows(rawRaba03RowsRef.current,remitos));
     if(typeof window!=="undefined"&&window.requestIdleCallback){
       const id=window.requestIdleCallback(refresh,{timeout:500});
       return()=>window.cancelIdleCallback&&window.cancelIdleCallback(id);
