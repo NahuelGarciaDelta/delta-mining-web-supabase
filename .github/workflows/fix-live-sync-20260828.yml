@@ -1,0 +1,70 @@
+name: Fix live Supabase sync 2026-08-28
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/fix-live-sync-20260828.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  fix-and-verify:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - name: Fix Bienvenida project filter
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          p=Path('src/modules/home/ViewBienvenida.jsx')
+          s=p.read_text()
+          old='export default function ViewBienvenida({onOpenModule,onNavigate,rawSources={},rma15=[],rop05=[],listaEquipos=[],rop02All=[],usdRate=1,nombreUsuario="Usuario",areaUsuario="OFICINA TÉCNICA",onOpenProfile,onLogout,esAdministrativo=false}){'
+          new='export default function ViewBienvenida({onOpenModule,onNavigate,rawSources={},rma15=[],rop05=[],listaEquipos=[],rop02All=[],usdRate=1,nombreUsuario="Usuario",areaUsuario="OFICINA TÉCNICA",onOpenProfile,onLogout,esAdministrativo=false,summaryDayFiltered=false}){'
+          if old not in s: raise SystemExit('No se encontró firma ViewBienvenida')
+          s=s.replace(old,new,1)
+          old='const effectiveRop02=Array.isArray(snapshotRop02)?snapshotRop02:(Array.isArray(rop02All)?rop02All:[]);'
+          new='const effectiveRop02=summaryDayFiltered?(Array.isArray(rop02All)?rop02All:[]):(Array.isArray(snapshotRop02)?snapshotRop02:(Array.isArray(rop02All)?rop02All:[]));'
+          if old not in s: raise SystemExit('No se encontró effectiveRop02')
+          s=s.replace(old,new,1)
+          old='const rma=Array.isArray(fallbackRma15)?fallbackRma15:(Array.isArray(rma15)?rma15:[]);'
+          new='const rma=summaryDayFiltered?(Array.isArray(rma15)?rma15:[]):(Array.isArray(fallbackRma15)?fallbackRma15:(Array.isArray(rma15)?rma15:[]));'
+          if old not in s: raise SystemExit('No se encontró selección RMA15')
+          s=s.replace(old,new,1)
+          old='const otAbiertasItems=Array.isArray(openOtSummary)?openOtSummary.filter(item=>!exclusionMap.has(equipmentProjectKey(item.interno,item.lugar))&&!exclusionMap.has(item.interno)):calculateOpenOtItems(rmaRecords,exclusionMap);'
+          new='const otAbiertasItems=!summaryDayFiltered&&Array.isArray(openOtSummary)?openOtSummary.filter(item=>!exclusionMap.has(equipmentProjectKey(item.interno,item.lugar))&&!exclusionMap.has(item.interno)):calculateOpenOtItems(rmaRecords,exclusionMap);'
+          if old not in s: raise SystemExit('No se encontró OT summary')
+          s=s.replace(old,new,1)
+          p.write_text(s)
+          PY
+      - name: Guard against stale Oficina Tecnica runtime error
+        run: |
+          if grep -R "saltosPendientes" -n src/modules/oficina-tecnica src/App.jsx; then
+            echo "Se encontró referencia saltosPendientes todavía presente" >&2
+            exit 1
+          fi
+      - name: Install and verify
+        run: |
+          npm ci
+          npm run verify:all
+          git diff --check
+      - name: Commit verified fix
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add src/modules/home/ViewBienvenida.jsx
+          if git diff --cached --quiet; then
+            echo 'No changes to commit'
+            exit 0
+          fi
+          git commit -m 'Fix Bienvenida project filter against Supabase snapshots'
+          git push origin main
