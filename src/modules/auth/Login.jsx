@@ -4,7 +4,8 @@ import {applyAppearance,loadCentralAppearance,readLocalAppearance,writeLocalAppe
 import { authenticateUser } from "../../services/appsScriptApi.js";
 
 export default function Login({onLogin,C,APPS_SCRIPT_URL,IMG_LOGIN_FONDO,LOGO,dmNormalizeAssignedProject}){
-  const AUTH_TIMEOUT_MS=20000;
+  const AUTH_TIMEOUT_MS=25000;
+  const AUTH_MAX_ATTEMPTS=2;
 
   const[usuario,setUsuario]=React.useState("");
   const[pass,setPass]=React.useState("");
@@ -39,17 +40,34 @@ export default function Login({onLogin,C,APPS_SCRIPT_URL,IMG_LOGIN_FONDO,LOGO,dm
     const mail=normalizarMail(usuario);
     if(!mail){showError("Ingresá tu usuario");return;}
     if(!pass){showError("Ingresá tu contraseña");return;}
-    submitInFlightRef.current=true;setValidando(true);let timeoutId=null;
+    submitInFlightRef.current=true;
+    setValidando(true);
     try{
-      const timeoutPromise=new Promise((_,reject)=>{timeoutId=window.setTimeout(()=>reject(Object.assign(new Error("La validación tardó demasiado. Intentá nuevamente."),{code:"AUTH_TIMEOUT"})),AUTH_TIMEOUT_MS);});
-      const json=await Promise.race([authenticateUser(APPS_SCRIPT_URL,mail,pass),timeoutPromise]);
+      let json=null;
+      let lastError=null;
+
+      for(let intento=1;intento<=AUTH_MAX_ATTEMPTS;intento++){
+        let timeoutId=null;
+        try{
+          const timeoutPromise=new Promise((_,reject)=>{timeoutId=window.setTimeout(()=>reject(Object.assign(new Error("La validación tardó demasiado. Intentá nuevamente."),{code:"AUTH_TIMEOUT"})),AUTH_TIMEOUT_MS);});
+          json=await Promise.race([authenticateUser(APPS_SCRIPT_URL,mail,pass),timeoutPromise]);
+          break;
+        }catch(err){
+          lastError=err;
+          if(intento<AUTH_MAX_ATTEMPTS)await new Promise(resolve=>window.setTimeout(resolve,750));
+        }finally{
+          if(timeoutId!==null)window.clearTimeout(timeoutId);
+        }
+      }
+
+      if(!json)throw lastError||new Error("Sin respuesta de autenticación");
       if(!json?.ok){showError(json?.error?.message||"Usuario o contraseña incorrectos");return;}
       const authenticatedUser=buildAuthenticatedUser(json,mail);
       saveAuthenticatedSession(authenticatedUser,{mustChangePassword:!!json.mustChangePassword,normalizeProject:dmNormalizeAssignedProject});
       aplicarAparienciaUsuario(mail,{central:true});
       onLogin(authenticatedUser);
     }catch(err){console.error("No se pudo validar el acceso",err);showError(err?.code==="AUTH_TIMEOUT"?"La validación tardó demasiado. Intentá nuevamente.":(err?.message||"No se pudo validar el acceso. Revisá la conexión."));}
-    finally{if(timeoutId!==null)window.clearTimeout(timeoutId);submitInFlightRef.current=false;setValidando(false);}
+    finally{submitInFlightRef.current=false;setValidando(false);}
   };
 
   return(

@@ -10,22 +10,23 @@ const read=p=>fs.readFileSync(path.join(root,p),'utf8');
 const source=p=>fs.readFileSync(path.join(tmp,p),'utf8');
 const normalizeText=text=>String(text||'').replace(/\r\n/g,'\n').trimEnd();
 const fail=message=>{console.error(`PARITY ERROR: ${message}`);process.exitCode=1;};
+const networkGitArgs=args=>process.platform==='win32'?['-c','http.sslBackend=openssl',...args]:args;
 const parity=JSON.parse(read('docs/original-parity.json'));
 
-const currentSourceCommit=execFileSync('git',['ls-remote',sourceRepo,'refs/heads/main'],{encoding:'utf8'}).trim().split(/\s+/)[0]||'';
+const currentSourceCommit=execFileSync('git',networkGitArgs(['ls-remote',sourceRepo,'refs/heads/main']),{encoding:'utf8'}).trim().split(/\s+/)[0]||'';
 if(currentSourceCommit&&parity.sourceCommit!==currentSourceCommit){
   console.warn(`PARITY NOTICE: delta-mining-ops avanzó desde ${parity.sourceCommit} hasta ${currentSourceCommit}. Portar cambios y actualizar baseline cuando corresponda.`);
 }
 
 execFileSync('git',['init',tmp],{stdio:'inherit'});
 execFileSync('git',['remote','add','origin',sourceRepo],{cwd:tmp,stdio:'inherit'});
-execFileSync('git',['fetch','--depth=1','origin',parity.sourceCommit],{cwd:tmp,stdio:'inherit'});
+execFileSync('git',networkGitArgs(['fetch','--depth=1','origin',parity.sourceCommit]),{cwd:tmp,stdio:'inherit'});
 execFileSync('git',['checkout','--detach','FETCH_HEAD'],{cwd:tmp,stdio:'inherit'});
 const checkedSourceCommit=execFileSync('git',['rev-parse','HEAD'],{cwd:tmp,encoding:'utf8'}).trim();
 if(checkedSourceCommit!==parity.sourceCommit)fail(`No se pudo validar el baseline esperado ${parity.sourceCommit}; se obtuvo ${checkedSourceCommit}.`);
 
 const exactFiles=[
-  'vite.config.js','scripts/progressive-rows-vite-plugin.mjs','scripts/atraso-ichc-fixes-vite-plugin.mjs','scripts/intelligent-refresh-vite-plugin.mjs','scripts/pm-vehicle-scope-vite-plugin.mjs','scripts/pm-vehicle-display-vite-plugin.mjs','scripts/equipment-profile-deduplicate-last-rop02-vite-plugin.mjs','scripts/equipment-profile-location-vehicle-label-vite-plugin.mjs','scripts/equipment-profile-vehicle-arrows-vite-plugin.mjs','src/components/CalendarPeriodMonthYear.jsx','src/hooks/useProgressiveRows.js','src/modules/equipment/EquipmentProfileWithLastRop02.jsx','src/modules/equipment/equipmentCode.js','src/modules/equipment/equipmentMovementHistory.js','src/modules/equipment/index.js','src/modules/home/FleetUtilizationPanel.jsx','src/modules/home/ViewBienvenidaProjectFilter.jsx','src/modules/home/fleetAnalytics.js','src/modules/home/homeAvailability.js','src/modules/home/index.js','src/shared/access.js','src/shared/dom.js','src/shared/formatters.js','src/shared/icons.js','src/shared/periodCompare.js','src/shared/projects.js','src/shared/safeTooltip.jsx','src/shared/safeTooltipSecurity.js','src/services/appCache.js','src/services/equipmentMovementsDomain.js','tests/equipmentCode.test.mjs','tests/projects.test.mjs'
+  'vite.config.js','scripts/progressive-rows-vite-plugin.mjs','scripts/atraso-ichc-fixes-vite-plugin.mjs','scripts/intelligent-refresh-vite-plugin.mjs','scripts/pm-vehicle-scope-vite-plugin.mjs','scripts/pm-vehicle-display-vite-plugin.mjs','scripts/equipment-profile-deduplicate-last-rop02-vite-plugin.mjs','scripts/equipment-profile-location-vehicle-label-vite-plugin.mjs','scripts/equipment-profile-vehicle-arrows-vite-plugin.mjs','src/components/CalendarPeriodMonthYear.jsx','src/components/ui/index.jsx','src/hooks/useProgressiveRows.js','src/modules/analytics/ViewCambiosTurnoEnhanced.jsx','src/modules/analytics/index.js','src/modules/equipment/EquipmentProfileWithLastRop02.jsx','src/modules/equipment/equipmentCode.js','src/modules/equipment/equipmentMovementHistory.js','src/modules/equipment/index.js','src/modules/home/FleetUtilizationPanel.jsx','src/modules/home/fleetAnalytics.js','src/modules/home/homeAvailability.js','src/modules/home/index.js','src/shared/access.js','src/shared/dom.js','src/shared/formatters.js','src/shared/icons.js','src/shared/periodCompare.js','src/shared/projects.js','src/shared/safeTooltip.jsx','src/shared/safeTooltipSecurity.js','src/services/equipmentMovementsDomain.js','tests/equipmentCode.test.mjs','tests/projects.test.mjs'
 ];
 for(const file of exactFiles){try{if(normalizeText(read(file))!==normalizeText(source(file)))fail(`${file} difiere de delta-mining-ops@${parity.sourceCommit}.`);}catch(error){fail(`${file}: ${error.message}`);}}
 
@@ -57,6 +58,13 @@ const writeActions=read('src/services/writeActions.js');if(!writeActions.include
 const stockService=read('src/services/stockService.js');if(!stockService.includes('./operationalSupabase.js'))fail('stockService.js no está conectado a Supabase.');
 const apiAdapter=read('src/services/appsScriptApi.js');if(!apiAdapter.includes('requireSupabase')||!apiAdapter.includes('getOperationalSource'))fail('appsScriptApi.js no funciona como adapter Supabase.');
 const operationalRepository=read('src/data/operationalRepository.js');
+const homeFilter=read('src/modules/home/ViewBienvenidaProjectFilter.jsx');
+if(/__dmHomeSummary(?:ExternalFilter|Project)/.test(homeFilter))fail('ViewBienvenidaProjectFilter.jsx vuelve a forzar un filtro global ajeno a la selección real.');
+const app=read('src/App.jsx');
+if(!app.includes('const onDateArrow=(event)=>'))fail('App.jsx no conserva la navegación ←/→ para vistas de un solo día.');
+if(app.includes('const globalPreloadRef='))fail('App.jsx sigue compitiendo con la vista activa mediante una precarga global remota.');
+const login=read('src/modules/auth/Login.jsx');
+if(!login.includes('const AUTH_MAX_ATTEMPTS=2')||!login.includes('authenticateUser(APPS_SCRIPT_URL,mail,pass)'))fail('Login no conserva el reintento de autenticación sobre el adapter de la app.');
 const equipmentFieldContracts=[['Código nuevo',['"Código nuevo"','"Codigo nuevo"']],['Código anterior',['"Código anterior"','"Codigo anterior"']],['Código de Drusila',['"Código de Drusila"','"Codigo de Drusila"']],['Familia',['Familia:']],['Lugar de alquiler',['"Lugar de alquiler"']]];
 for(const [field,markers] of equipmentFieldContracts){if(!markers.some(marker=>operationalRepository.includes(marker)))fail(`operationalRepository.js no expone el campo de Lista Maestra requerido por la original: ${field}`);}
 if(!process.exitCode)console.log(`Paridad integral estática OK contra delta-mining-ops@${parity.sourceCommit}${currentSourceCommit&&currentSourceCommit!==parity.sourceCommit?` (main original actual: ${currentSourceCommit})`:''}`);

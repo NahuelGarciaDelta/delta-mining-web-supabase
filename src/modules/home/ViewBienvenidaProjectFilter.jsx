@@ -71,12 +71,7 @@ export default function ViewBienvenidaProjectFilter(props){
   const availableDays=React.useMemo(()=>[...new Set(projectFilteredRop02.map(dateFromRop02Row).filter(Boolean))].sort((a,b)=>b.localeCompare(a)),[projectFilteredRop02]);
   const effectiveDay=selectedDay&&availableDays.includes(selectedDay)?selectedDay:(availableDays[0]||"");
 
-  if(typeof window!=="undefined"){
-    window.__dmHomeSummaryExternalFilter=true;
-    window.__dmHomeSummaryProject="TODOS";
-  }
   React.useEffect(()=>{try{window.localStorage.setItem(STORAGE_KEY,JSON.stringify(selection===null?"TODOS":selection));}catch(_){}},[selection]);
-  React.useEffect(()=>()=>{if(typeof window!=="undefined"){window.__dmHomeSummaryExternalFilter=false;window.__dmHomeSummaryProject="TODOS";}},[]);
   React.useEffect(()=>{
     let frame=0;
     const findHost=()=>{

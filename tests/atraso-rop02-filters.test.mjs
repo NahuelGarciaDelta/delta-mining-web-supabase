@@ -22,7 +22,8 @@ test("Atraso ROP02 aplica los filtros también a tarjetas, tablas y exportacione
   assert.match(source, /const saltosFiltrados=useMemo/);
   assert.match(source, /const resumenFiltrado=useMemo/);
   assert.match(source, /excelFromCols\(cols\.filter\(c=>c\.key!=="accion"\),atrasadosPendientes/);
-  assert.match(source, /excelFromCols\(colsSaltos\.filter\(c=>c\.key!=="accion"\),saltosFiltrados/);
+  assert.match(source, /const saltosPendientes=saltosFiltrados\.filter\(r=>!r\.admitido\);/);
+  assert.match(source, /excelFromCols\(colsSaltos\.filter\(c=>c\.key!=="accion"\),saltosPendientes/);
 });
 
 test("Atraso combina las consultas compactas con el historial global ROP02", () => {

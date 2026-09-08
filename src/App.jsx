@@ -24,7 +24,6 @@ import ModuleErrorBoundary from "./components/ModuleErrorBoundary.jsx";
 import OfflineBanner from "./components/OfflineBanner.jsx";
 import { useOnlineStatus } from "./hooks/useOnlineStatus.js";
 import { runRefreshTasks } from "./services/refreshManager.js";
-import { preloadHistoricalDatasets } from "./services/globalPreload.js";
 import { preloadOperationalSnapshots } from "./services/operationalSupabase.js";
 import { getOperationalSource } from "./data/operationalRepository.js";
 import { can, getPermissionSnapshot } from "./services/permissionService.js";
@@ -203,6 +202,34 @@ export default function App(){
   const puedeEditarVista=!areaRequeridaVista||can("edit",areaRequeridaVista);
   const[loading,setLoading]=useState(false);
   const[syncing,setSyncing]=useState(false);
+
+  // When a view exposes exactly one date, ← / → advances that selected day.
+  // Ranges intentionally have two inputs and are left untouched.
+  useEffect(()=>{
+    const onDateArrow=(event)=>{
+      if(event.defaultPrevented||(event.key!=="ArrowLeft"&&event.key!=="ArrowRight"))return;
+      const active=document.activeElement;
+      if(String(active?.tagName||"").toUpperCase()==="TEXTAREA"||active?.isContentEditable)return;
+      const inputs=[...document.querySelectorAll('input[type="date"]')].filter(input=>input.offsetParent!==null&&!input.disabled);
+      if(inputs.length!==1)return;
+      const input=inputs[0];
+      const raw=String(input.value||"");
+      if(!/^\d{4}-\d{2}-\d{2}$/.test(raw))return;
+      const date=new Date(`${raw}T12:00:00`);
+      if(Number.isNaN(date.getTime()))return;
+      date.setDate(date.getDate()+(event.key==="ArrowRight"?1:-1));
+      const value=`${date.getFullYear()}-${String(date.getMonth()+1).padStart(2,"0")}-${String(date.getDate()).padStart(2,"0")}`;
+      const setter=Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype,"value")?.set;
+      if(!setter)return;
+      setter.call(input,value);
+      input.dispatchEvent(new Event("input",{bubbles:true}));
+      input.dispatchEvent(new Event("change",{bubbles:true}));
+      event.preventDefault();
+      event.stopPropagation();
+    };
+    window.addEventListener("keydown",onDateArrow,true);
+    return()=>window.removeEventListener("keydown",onDateArrow,true);
+  },[]);
   const[rop02All,setRop02All]=useState([]);
   const[rop02ControlAll,setRop02ControlAll]=useState([]);
   const[rop05,setRop05]=useState([]);
@@ -602,46 +629,6 @@ export default function App(){
     // VIEW_SOURCES (PM, Stock, Licitaciones y Movimientos). No bloquea la UI.
     preloadOperationalSnapshots().catch(()=>{});
   },[auth,hydrateSourcesFromCache]);
-
-  // ─── Precarga global ─────────────────────────────────────────────────────
-  // Al autenticarse, llena en segundo plano el cache de TODAS las fuentes comunes.
-  // No bloquea Bienvenida ni muestra loaders. Las vistas posteriores reutilizan
-  // memoria / local cache y solo comprueban versiones en el servidor.
-  const globalPreloadRef=useRef(false);
-  useEffect(()=>{
-    if(!auth||globalPreloadRef.current)return;
-    globalPreloadRef.current=true;
-    try{sessionStorage.setItem("dm_global_preload_started","1");}catch(_){}
-
-    let cancelled=false;
-    let idleId=null;
-    let timeoutId=null;
-
-    const run=async()=>{
-      if(cancelled)return;
-      try{
-        // Primero las fuentes normales que comparten prácticamente todas las vistas.
-        await loadSources(ALL_APP_PRELOAD_SOURCES,{background:true});
-      }catch(_){}
-
-      if(cancelled)return;
-
-      // Después calienta el caché histórico legacy todavía usado por ROP05/RMA15.
-      try{await preloadHistoricalDatasets();}catch(_){}
-    };
-
-    // El cache local ya fue hidratado arriba. La revalidación arranca pronto y
-    // siempre en segundo plano para que el usuario no llegue antes que el prefetch.
-    timeoutId=window.setTimeout(run,80);
-
-    return()=>{
-      cancelled=true;
-      if(idleId!=null&&typeof window.cancelIdleCallback==="function"){
-        window.cancelIdleCallback(idleId);
-      }
-      if(timeoutId!=null)window.clearTimeout(timeoutId);
-    };
-  },[auth,loadSources]);
 
   const refreshCurrentView=useCallback(async({background=false,reason="manual"}={})=>{
     const refreshedAt=Date.now();

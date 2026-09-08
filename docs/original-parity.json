@@ -1,8 +1,8 @@
 {
   "sourceRepository": "NahuelGarciaDelta/delta-mining-ops",
-  "sourceCommit": "6c17c531f7161c04f7e1044ecbc4a859b5a4c67a",
-  "syncedAt": "2026-08-27T23:40:40.083Z",
+  "sourceCommit": "ea20d7f401094f05a372272af1113b4e5b94e932",
+  "syncedAt": "2026-09-08T23:00:00.000Z",
   "policy": "UI, filtros, pestañas, navegación, cálculos, permisos, vistas y lógica de dominio se mantienen en paridad con la app original. Transporte, lectura, escritura y persistencia remota permanecen Supabase-first.",
   "status": "functional-parity-current",
-  "notes": "Port final manual: Desgaste integrado con catálogo Supabase; MantenimientoRoute conserva universo PM Supabase; apariencia por usuario y fondos persisten vía RPC Supabase; login conserva el adapter Supabase; exportación administrativa y bootstrap permanecen activos."
+  "notes": "Port final manual: Desgaste integrado con catálogo Supabase; MantenimientoRoute conserva universo PM Supabase; apariencia por usuario y fondos persisten vía RPC Supabase; login conserva el adapter Supabase; exportación administrativa y bootstrap permanecen activos. Bienvenida conserva su filtrado local por proyecto sin mutar filtros globales."
 }

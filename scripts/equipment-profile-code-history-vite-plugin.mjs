@@ -44,10 +44,15 @@ export function equipmentProfileCodeHistoryVitePlugin() {
   return <div ref={anchorRef} style={{position:"relative",width:"100%",minWidth:0}}><button type="button" onClick={()=>{setOpen(v=>!v);setTimeout(updatePopup,0);}} style={{width:"100%",height:40,boxSizing:"border-box",borderRadius:8,border:"1px solid "+C.border,background:"#151515",color:C.text,padding:"0 36px 0 12px",fontSize:12,fontWeight:700,outline:"none",cursor:"pointer",textAlign:"left",whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis",position:"relative"}}>{current?.label||value||"Seleccionar equipo..."}<span style={{position:"absolute",right:12,top:"50%",transform:"translateY(-50%)"}}>⌄</span></button>{menu}</div>;
 }`)
 
-      out = out.replace(
-        '  const [selectedMonth,setSelectedMonth]=useState("");\n  const [activeTab,setActiveTab]=useState("resumen");',
-        '  const [selectedMonth,setSelectedMonth]=useState("");\n  const [selectedProject,setSelectedProject]=useState("");\n  const [activeTab,setActiveTab]=useState("resumen");'
-      )
+      // The line after selectedMonth may be modified by an earlier transform.
+      // Add this state independently so the injected project UI never reads an
+      // undeclared selectedProject value.
+      if(!out.includes('const [selectedProject,setSelectedProject]')){
+        out=out.replace(
+          '  const [selectedMonth,setSelectedMonth]=useState("");',
+          '  const [selectedMonth,setSelectedMonth]=useState("");\n  const [selectedProject,setSelectedProject]=useState("");'
+        )
+      }
 
       out = out.replace(/  const allCodes=useMemo\(\(\)=>\{[\s\S]*?\n  \},\[listaEquipos,rop02Index,rop05Index,rma15Index,pm\.config,pmRegIndex,masterIndex,movementIndex\]\);/,
 `  const physicalIdentity=useMemo(()=>{
