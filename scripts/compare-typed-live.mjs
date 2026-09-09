@@ -1,6 +1,7 @@
 import fs from "node:fs";
 
-const env=Object.fromEntries(fs.readFileSync(".env.local","utf8").split(/\r?\n/).filter(x=>x&&!x.startsWith("#")&&x.includes("=")).map(x=>{const i=x.indexOf("=");return[x.slice(0,i),x.slice(i+1)]}));
+const fileEnv=fs.existsSync(".env.local")?Object.fromEntries(fs.readFileSync(".env.local","utf8").split(/\r?\n/).filter(x=>x&&!x.startsWith("#")&&x.includes("=")).map(x=>{const i=x.indexOf("=");return[x.slice(0,i),x.slice(i+1)]})):{};
+const env={...fileEnv,...process.env};
 const app=env.VITE_APPS_SCRIPT_URL,base=env.VITE_SUPABASE_URL,key=env.VITE_SUPABASE_ANON_KEY;
 if(!app||!base||!key)throw new Error("Falta configuración live en .env.local");
 const headers={apikey:key,Authorization:`Bearer ${key}`};

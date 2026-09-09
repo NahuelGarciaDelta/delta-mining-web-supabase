@@ -1,6 +1,7 @@
 import fs from "node:fs";
 
-const env=Object.fromEntries(fs.readFileSync(".env.local","utf8").split(/\r?\n/).filter(x=>x&&!x.startsWith("#")&&x.includes("=")).map(x=>{const i=x.indexOf("=");return[x.slice(0,i),x.slice(i+1)]}));
+const fileEnv=fs.existsSync(".env.local")?Object.fromEntries(fs.readFileSync(".env.local","utf8").split(/\r?\n/).filter(x=>x&&!x.startsWith("#")&&x.includes("=")).map(x=>{const i=x.indexOf("=");return[x.slice(0,i),x.slice(i+1)]})):{};
+const env={...fileEnv,...process.env};
 const base=env.VITE_SUPABASE_URL,key=env.VITE_SUPABASE_ANON_KEY,headers={apikey:key,Authorization:`Bearer ${key}`};
 const projects=["JOSE MARIA","FILO DEL SOL","FILO SUR","EL ZORRO"];
 

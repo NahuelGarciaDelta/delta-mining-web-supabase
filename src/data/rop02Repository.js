@@ -12,7 +12,7 @@ function legacyRow(row={}){
     "Supervisor Delta":row.supervisor_delta,"Supervisor Vial Cliente":row.supervisor_vial_cliente,
     "Turno de trabajo":row.turno_trabajo,"N° Parte":row.numero_parte,Proyecto:row.proyecto,
     "Horómetro inicial":row.horometro_inicial,"Horómetro final":row.horometro_final,
-    "Cant. Hs.":row.cantidad_horas,Combustible:row.combustible,Aceite:row.aceite,
+    "Cant. Hs.":row.cantidad_horas,Combustible:row.combustible,Aceite:row.aceite_text??row.aceite,
     "Descripción de los trabajos realizados":row.descripcion_trabajos,
     "Información sobre Desgaste":row.informacion_desgaste,Observaciones:row.observaciones,Estado:row.estado,
   };

@@ -9,7 +9,7 @@ import UserSettingsModal from "./components/UserSettingsModal.jsx";
 import GlobalSearch from "./components/GlobalSearch.jsx";
 import { APPS_SCRIPT_URL } from "./config/app.js";
 import { VIEW_SOURCES } from "./config/viewSources.js";
-import { fetchAction, fetchHealth, fetchSource, runWithConcurrency_ } from "./services/appsScriptApi.js";
+import { fetchAction, fetchHealth, fetchSource } from "./services/appsScriptApi.js";
 import { clearAuthenticatedSession, getAuthenticatedUser } from "./services/authSession.js";
 import { appAlert, appConfirm } from "./services/dialogService.js";
 import { APP_FILTERS_STATE_KEY, readSavedAppFilters, readSavedDataSources, saveDataSourcesToStorage, getCachedSourceTimestamp, mergeIncrementalSource, readCachedSourceRecords, readCachedSource, writeCachedSource } from "./services/appCache.js";

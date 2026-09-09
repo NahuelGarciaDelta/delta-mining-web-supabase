@@ -34,7 +34,7 @@ function rop02Legacy(row={}){
     "Horómetro final":row.horometro_final,
     "Cant. Hs.":row.cantidad_horas,
     Combustible:row.combustible,
-    Aceite:row.aceite,
+    Aceite:row.aceite_text??row.aceite,
     "Descripción de los trabajos realizados":row.descripcion_trabajos,
     "Información sobre Desgaste":row.informacion_desgaste,
     Observaciones:row.observaciones,
@@ -121,7 +121,7 @@ async function getRop02Source_(sourceDataset){
   const all=[];
   for(let offset=0;;offset+=1000){
     const {data,error}=await requireSupabase().from("rop02")
-      .select("source_dataset,source_row,fecha,interno,equipo,operador,supervisor_delta,supervisor_vial_cliente,turno_trabajo,numero_parte,proyecto,horometro_inicial,horometro_final,cantidad_horas,combustible,aceite,descripcion_trabajos,informacion_desgaste,observaciones,source_key,synced_at")
+      .select("source_dataset,source_row,fecha,interno,equipo,operador,supervisor_delta,supervisor_vial_cliente,turno_trabajo,numero_parte,proyecto,horometro_inicial,horometro_final,cantidad_horas,combustible,aceite,aceite_text,descripcion_trabajos,informacion_desgaste,observaciones,source_key,synced_at")
       .eq("source_dataset",sourceDataset)
       .not("source_row","is",null)
       .order("source_row",{ascending:true})

@@ -99,123 +99,34 @@ export function expandCompactResponse(json){
   return json;
 }
 
-export function buildAppsScriptUrl(baseUrl,action,params={}){
-  const cleanBase=String(baseUrl||"").trim().replace(/\/+$/,"");
-  const u=new URL(cleanBase);
-  u.searchParams.set("action",action);
-  u.searchParams.set("_t",String(Date.now()));
-  Object.entries(params||{}).forEach(([k,v])=>{
-    if(v!==undefined&&v!==null&&v!=="")u.searchParams.set(k,String(v));
+export async function authenticateUser(_url,email,password){
+  const {data,error}=await requireSupabase().rpc("app_authenticate_user",{p_email:String(email||""),p_password:String(password||"")});
+  if(error)throw new Error(`Supabase app_authenticate_user: ${error.message}`);
+  return data||{ok:false,error:{message:"Respuesta de autenticación inválida."}};
+}
+
+export async function updateUserProfile(_url,{email,currentPassword="",newPassword="",nombre="",area=""}={}){
+  const {data,error}=await requireSupabase().rpc("app_update_user_profile",{
+    p_email:String(email||""),p_current_password:String(currentPassword||""),p_new_password:String(newPassword||""),p_nombre:String(nombre||""),p_area:String(area||"")
   });
-  return u.toString();
+  if(error)throw new Error(`Supabase app_update_user_profile: ${error.message}`);
+  return data||{ok:false,error:{message:"Respuesta de perfil inválida."}};
 }
 
-export function sleep_(ms){return new Promise(resolve=>setTimeout(resolve,ms));}
-
-function authEndpointLabel(url){
-  try{
-    const parsed=new URL(String(url||"").trim());
-    return `${parsed.origin}/macros/s/[deployment]/exec`;
-  }catch(_){
-    return "Apps Script (URL invalida)";
-  }
-}
-
-export async function authenticateUser(url,email,password){
-  const endpoint=String(url||"").trim();
-  if(!endpoint||/REEMPLAZAR|TU_DEPLOYMENT|YOUR_/i.test(endpoint)){
-    throw new Error("VITE_APPS_SCRIPT_URL no contiene un deployment valido de Apps Script.");
-  }
-
-  const startedAt=Date.now();
-  let response;
-  try{
-    response=await fetch(endpoint,{
-      method:"POST",
-      headers:{"Content-Type":"application/x-www-form-urlencoded;charset=UTF-8"},
-      body:new URLSearchParams({payload:JSON.stringify({action:"authenticate_user",email,password})}),
-      cache:"no-store",
-      redirect:"follow"
-    });
-  }catch(error){
-    console.error("Error de red al autenticar con Apps Script",{
-      endpoint:authEndpointLabel(endpoint),action:"authenticate_user",
-      elapsedMs:Date.now()-startedAt,error:error?.name||"NetworkError"
-    });
-    throw new Error("No se pudo conectar con el servicio de autenticacion de Apps Script.");
-  }
-
-  const contentType=response.headers.get("content-type")||"";
-  const text=await response.text();
-  const isHtml=/^\s*</.test(text)||contentType.toLowerCase().includes("text/html");
-  console.info("Respuesta de autenticacion Apps Script",{
-    endpoint:authEndpointLabel(endpoint),action:"authenticate_user",
-    status:response.status,contentType,isHtml,elapsedMs:Date.now()-startedAt
-  });
-
-  if(!response.ok)throw new Error(`Apps Script respondio HTTP ${response.status}.`);
-  if(isHtml)throw new Error("Apps Script devolvio HTML en lugar de JSON. Verifica el deployment configurado.");
-  let json;
-  try{json=JSON.parse(text);}catch(_){throw new Error("Apps Script devolvio una respuesta que no es JSON valido.");}
-  return json;
-}
-
-export async function runWithConcurrency_(items,limit,worker){
-  const results=new Array(items.length);
-  let cursor=0;
-  const runners=Array.from({length:Math.min(Math.max(1,limit),items.length)},async()=>{
-    while(true){
-      const index=cursor++;
-      if(index>=items.length)return;
-      try{results[index]={status:"fulfilled",value:await worker(items[index],index)};}
-      catch(reason){results[index]={status:"rejected",reason};}
-    }
-  });
-  await Promise.all(runners);
-  return results;
-}
-
-async function fetchAppsScriptAction_(url,action,{force=false,compact=true,retries=2,since="",timeoutMs=45000}={}){
-  const params={};
-  if(force)params.force="1";
-  if(since&&!force)params.since=since;
-  if(compact&&!['health','diag','clear_cache','sync','versions','get_data_versions'].includes(action))params.compact="1";
-  if(action==="rop05")params.limit="all";
-
-  let lastErr=null;
-  for(let attempt=0;attempt<=retries;attempt++){
-    const controller=typeof AbortController!=="undefined"?new AbortController():null;
-    const timer=controller?setTimeout(()=>controller.abort(),timeoutMs):null;
-    try{
-      const requestUrl=buildAppsScriptUrl(url,action,params);
-      const res=await fetch(requestUrl,{cache:"no-store",redirect:"follow",signal:controller?.signal});
-      if(!res.ok)throw new Error(`HTTP ${res.status} desde el Apps Script`);
-      const text=await res.text();
-      let json;
-      try{json=JSON.parse(text);}catch(_){throw new Error("El Apps Script devolvió HTML. Verificá que esté publicado como 'Cualquier persona'.");}
-      json=expandCompactResponse(json);
-      if(!json.ok&&!json.sources)throw new Error(json.error?.message||"Respuesta inválida del Apps Script");
-      return json;
-    }catch(err){
-      lastErr=err?.name==="AbortError"
-        ?new Error(`La consulta ${action} superó ${Math.round(timeoutMs/1000)} segundos`)
-        :err;
-      if(attempt<retries)await sleep_(700*(attempt+1));
-    }finally{
-      if(timer)clearTimeout(timer);
-    }
-  }
-  throw lastErr;
-}
-
-export async function fetchAction(url,action,options={}){
-  if(SPECIAL_CACHE_ACTIONS[action]&&isSupabaseConfigured){
-    const value=await fetchSupabaseCachedAction(action);
+async function fetchSupabaseSource_(source){
+  if(SPECIAL_CACHE_ACTIONS[source]){
+    const value=await fetchSupabaseCachedAction(source);
     if(value)return value;
-    throw new Error(`Acción ${action} no disponible en Supabase`);
   }
-  return fetchAppsScriptAction_(url,action,options);
+  if(TYPED_SUPABASE_SOURCES.has(source))return getOperationalSource(source);
+  if(GENERIC_SUPABASE_SOURCES.has(source)){
+    const value=await readGenericSourceFromSupabase_(source);
+    if(value)return value;
+  }
+  throw new Error(`Acción ${source} no está disponible en Supabase.`);
 }
+
+export const fetchAction=async(_url,action,_options={})=>fetchSupabaseSource_(action);
 
 export async function fetchHealth(_url){
   if(!isSupabaseConfigured)return{ok:false,source:"supabase",error:{message:"Supabase no configurado"}};
@@ -223,34 +134,11 @@ export async function fetchHealth(_url){
   if(error)throw error;return{ok:true,source:"supabase",latencyMs:Math.round(performance.now()-started),serverTime:new Date().toISOString()};
 }
 
-export async function fetchSource(url,source,{force=false,since=""}={}){
-  if(TYPED_SUPABASE_SOURCES.has(source)&&isSupabaseConfigured){
-    try{return await getOperationalSource(source);}
-    catch(error){console.warn(`[${source}] Supabase tipado no disponible; fallback Apps Script`,error);}
-  }
-  if(GENERIC_SUPABASE_SOURCES.has(source)){
-    try{
-      const value=await readGenericSourceFromSupabase_(source);
-      if(value)return value;
-    }catch(error){console.warn(`[${source}] Supabase no disponible; fallback Apps Script`,error);}
-  }
-  return fetchAppsScriptAction_(url,source,{force,compact:true,since});
-}
+export const fetchSource=async(_url,source,_options={})=>fetchSupabaseSource_(source);
 
 export async function fetchSyncVersions(_url){
   try{return await fetchSupabaseVersions_();}
   catch(error){console.warn("Manifest Supabase no disponible",error);return null;}
 }
 
-export async function fetchDatasetQuery(url,params={}){
-  const controller=typeof AbortController!=="undefined"?new AbortController():null;
-  const timer=controller?setTimeout(()=>controller.abort(),60000):null;
-  try{
-    const response=await fetch(buildAppsScriptUrl(url,"query_dataset",params),{cache:"no-store",redirect:"follow",signal:controller?.signal});
-    if(!response.ok)throw new Error(`HTTP ${response.status} desde Apps Script`);
-    const text=await response.text();
-    let json;try{json=JSON.parse(text);}catch(_){throw new Error("Apps Script no devolvió JSON válido");}
-    if(!json?.ok)throw new Error(json?.error?.message||"Consulta de dataset inválida");
-    return{...json,payloadBytes:new Blob([text]).size};
-  }finally{if(timer)clearTimeout(timer);}
-}
+export async function fetchDatasetQuery(_url,_params={}){throw new Error("Las consultas históricas se resuelven con los repositorios Supabase.");}
