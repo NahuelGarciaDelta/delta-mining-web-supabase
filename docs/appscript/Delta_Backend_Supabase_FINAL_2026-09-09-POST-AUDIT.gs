@@ -5561,3 +5561,67 @@ function INSTALAR_DELTA_SUPABASE(){
 function estadoSincronizacionSupabase(){var p=PropertiesService.getScriptProperties(),triggers=ScriptApp.getProjectTriggers().filter(function(t){return t.getHandlerFunction()==="sincronizarDeltaConSupabaseCada5Min";}).map(function(t){return{handler:t.getHandlerFunction(),event:String(t.getEventType())};}),datasets={};try{datasets=JSON.parse(p.getProperty(DELTA_SUPABASE_AUDIT_PROPERTY_)||"{}");}catch(e){datasets={_audit:{ok:false,error:"No se pudo leer el registro de sincronización."}};}return{ok:true,version:DELTA_SUPABASE_SYNC_VERSION_,configured:{url:!!p.getProperty("DELTA_SUPABASE_URL"),serviceRoleKey:!!p.getProperty("DELTA_SUPABASE_SERVICE_ROLE_KEY")},triggers:triggers,lastSync:p.getProperty("DELTA_SUPABASE_LAST_SYNC")||null,datasets:datasets};}
 
 
+
+
+/**********************************************************************
+ * DELTA — PARIDAD DE MOVIMIENTOS Y JUSTIFICACIONES
+ * Sheets es la fuente autoritativa de los movimientos ya cargados.
+ * Este bloque se declara al final para extender el sincronizador anterior.
+ **********************************************************************/
+var DELTA_SUPABASE_SYNC_VERSION_="2026-09-10-MOVEMENTS-PARITY-V1";
+
+function deltaSyncEquipmentMovements_(){
+  var source=handleGetEquipmentMovements_(false)||{};
+  var rows=Array.isArray(source.data)?source.data:[];
+  var out=deltaSupabaseRpc_("sync_app_equipment_movements_from_sheet",{p_rows:rows,p_meta:{source:"Sheets",authoritative:true,sourceVersion:source.meta&&source.meta.serverVersion||getDatasetVersion_("movimientos_equipos")}});
+  out.sheetRows=rows.length;
+  return out;
+}
+
+function deltaReadTallerMovementsForSupabase_(){
+  var ss=SpreadsheetApp.openById(MOVIMIENTOS_EQUIPOS_DB_ID_),rows=[];
+  Object.keys(TALLER_MOV_SHEETS_).forEach(function(type){
+    var sheet=ss.getSheetByName(TALLER_MOV_SHEETS_[type]);
+    if(!sheet||sheet.getLastRow()<2)return;
+    var values=sheet.getRange(2,1,sheet.getLastRow()-1,TALLER_MOV_HEADERS_.length).getValues();
+    values.forEach(function(line){
+      if(!String(line[0]||"").trim())return;
+      var row={};
+      TALLER_MOV_HEADERS_.forEach(function(header,index){
+        var value=line[index];
+        row[header]=value instanceof Date?value.toISOString():value;
+      });
+      rows.push(row);
+    });
+  });
+  return rows;
+}
+
+function deltaSyncTallerMovements_(){
+  var rows=deltaReadTallerMovementsForSupabase_();
+  var out=deltaSupabaseRpc_("sync_app_taller_movements_from_sheet",{p_rows:rows,p_meta:{source:"Sheets",authoritative:true}});
+  out.sheetRows=rows.length;
+  return out;
+}
+
+function syncAllConfiguredDatasetsToSupabase(){
+  var results={},keys=Object.keys(SHEETS_CONFIG);
+  keys.forEach(function(key){
+    try{
+      if(DELTA_SUPABASE_ROP02_DATASETS_.indexOf(key)>=0)results[key]=deltaSyncRop02_(key);
+      else if(DELTA_SUPABASE_TYPED_DATASETS_.indexOf(key)>=0)results[key]=deltaSyncTyped_(key);
+      else if(key==="raba03")results[key]=deltaSyncRaba03_();
+      else if(key==="remitos_cargados")results[key]=deltaSyncRemitos_();
+      else if(key==="usuarios")results[key]=deltaSyncUsuarios_();
+      else if(key==="articulos_desgaste")results[key]=deltaSyncWearArticles_();
+      else results[key]=deltaSyncGeneric_(key);
+    }catch(err){results[key]={ok:false,error:err.message};}
+  });
+  results.movimientos_equipos=deltaSafeRun_(deltaSyncEquipmentMovements_);
+  results.movimientos_taller=deltaSafeRun_(deltaSyncTallerMovements_);
+  results.estados_solicitudes=deltaSafeRun_(deltaSyncEstadosSolicitudes_);
+  results.stock=deltaSafeRun_(deltaSyncStock_);
+  var special=deltaSafeRun_(deltaSyncSpecialSnapshots_);
+  if(special.results)Object.keys(special.results).forEach(function(key){results[key]=special.results[key];});else results.especiales=special;
+  return{ok:Object.keys(results).every(function(key){return results[key]&&results[key].ok!==false;}),version:DELTA_SUPABASE_SYNC_VERSION_,results:results,syncedAt:new Date().toISOString()};
+}

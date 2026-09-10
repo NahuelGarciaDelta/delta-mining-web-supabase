@@ -23,7 +23,9 @@ export async function loadEquipmentMovements({force=false,revalidate=true}={}){
   cache.loading=(async()=>{
     if(!cache.loaded){const record=await readCachedSource(CACHE_KEY).catch(()=>null);if(record?.data?.ok&&Array.isArray(record.data.data)){cache={data:record.data.data,loaded:true,loading:cache.loading,error:"",version:Number(record.data?.meta?.serverVersion||record.version||0)};emit();}}
     if(cache.loaded&&!force&&!revalidate)return cache;
-    const response=await getEquipmentMovementsSnapshot(false,{force});
+    // Los movimientos y las justificaciones cambian durante la jornada. Una copia
+    // persistida sólo puede ser el primer render: toda revalidación consulta Supabase.
+    const response=await getEquipmentMovementsSnapshot(false,{force:Boolean(force||revalidate)});
     cache={data:Array.isArray(response?.data)?response.data:[],loaded:true,loading:cache.loading,error:"",version:Number(response?.meta?.serverVersion||Date.now())};
     await persistCache_(cache.version);emit();return cache;
   })().catch(error=>{cache={...cache,loaded:true,loading:null,error:error?.message||"No fue posible cargar movimientos de equipos."};emit();if(cache.data.length)return cache;throw error;}).finally(()=>{cache={...cache,loading:null};emit();});
@@ -81,13 +83,12 @@ export function useEquipmentMovements(rop02Rows=[],views=[]){
   const activeMovementByEquipment=useMemo(()=>getMovimientoVigentePorEquipo(combinedMovements,latestRop02ByEquipmentProject),[combinedMovements,latestRop02ByEquipmentProject]);
   const historicalMovementMap=useMemo(()=>{const map=new Map();for(const movement of combinedMovements){const estado=String(movement?.estado||"").toUpperCase();if(movement?.activo===false||["CANCELADO","ELIMINADO"].includes(estado)||!toIsoDate_(movement?.fechaUltimoRop02))continue;map.set(`history:${movement?.id||map.size}`,movement);}return map;},[combinedMovements]);
   const admitidos=useMemo(()=>({...movementsToAtrasoMap(historicalMovementMap),...movementsToAtrasoMap(activeMovementByEquipment)}),[historicalMovementMap,activeMovementByEquipment]);
-  // La Ficha Única usa como fuente histórica solamente los movimientos realmente
-  // cargados en las pestañas de Movimiento/Taller. El cache legado de MOVIMIENTOS_EQUIPOS
-  // puede contener proyecciones o registros derivados y no debe crear filas duplicadas.
+  // La Ficha Única incluye justificaciones generales y movimientos de Taller. Ambos
+  // comparten ID cuando Taller generó la proyección genérica, por eso se desduplican.
   const profileMovements=useMemo(()=>{
     if(!wantsTallerProfile)return snapshot.data;
     const unique=new Map();
-    for(const movement of tallerCanonical){
+    for(const movement of [...(Array.isArray(snapshot.data)?snapshot.data:[]),...tallerCanonical]){
       const key=String(movement.id||`${movement.fechaHora}|${movement.internoNormalizado}|${movement.proyectoOrigen}|${movement.proyectoDestino}|${movement.internoDestino}`);
       if(!unique.has(key))unique.set(key,movement);
     }
