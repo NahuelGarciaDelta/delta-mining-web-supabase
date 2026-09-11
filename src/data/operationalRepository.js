@@ -117,16 +117,29 @@ async function allOrPage(getter,params){
 export const getRop05Page=(params={})=>allOrPage(getRop05Chunk,params);
 export const getRma15Page=(params={})=>allOrPage(getRma15Chunk,params);
 
+// `rop02_frontend` is the public, curated projection for the web app.  The
+// raw table also contains preserved legacy rows and must never feed operational
+// screens.  Source provenance is represented in source_key by the sync.
+const ROP02_FRONTEND_TABLE="rop02_frontend";
+const ROP02_SOURCE_KEY_PREFIX={
+  rop02_fs:"SRC|ROP02_FS|",
+  rop02_jm:"SRC|ROP02_JM|",
+  rop02_filosur:"SRC|ROP02_FILOSUR|",
+  rop02_zorro:"SRC|ROP02_ZORRO|",
+};
+
 async function getRop02Source_(sourceDataset){
+  const sourceKeyPrefix=ROP02_SOURCE_KEY_PREFIX[sourceDataset];
+  if(!sourceKeyPrefix)throw new Error(`Fuente ROP02 no soportada: ${sourceDataset}`);
   const all=[];
   for(let offset=0;;offset+=1000){
-    const {data,error}=await requireSupabase().from("rop02")
-      .select("source_dataset,source_row,fecha,interno,equipo,operador,supervisor_delta,supervisor_vial_cliente,turno_trabajo,numero_parte,proyecto,horometro_inicial,horometro_final,cantidad_horas,combustible,aceite,aceite_text,descripcion_trabajos,informacion_desgaste,observaciones,source_key,synced_at")
-      .eq("source_dataset",sourceDataset)
-      .not("source_row","is",null)
-      .order("source_row",{ascending:true})
+    const {data,error}=await requireSupabase().from(ROP02_FRONTEND_TABLE)
+      .select("fecha,interno,equipo,operador,supervisor_delta,supervisor_vial_cliente,turno_trabajo,numero_parte,proyecto,horometro_inicial,horometro_final,cantidad_horas,combustible,aceite,aceite_text,descripcion_trabajos,informacion_desgaste,observaciones,source_key,synced_at,estado")
+      .like("source_key",`${sourceKeyPrefix}%`)
+      .order("fecha",{ascending:true})
+      .order("source_key",{ascending:true})
       .range(offset,offset+999);
-    if(error)throw new Error(`Supabase ${sourceDataset}: ${error.message}`);
+    if(error)throw new Error(`Supabase ${ROP02_FRONTEND_TABLE} (${sourceDataset}): ${error.message}`);
     all.push(...(data||[]));
     if((data||[]).length<1000)break;
   }

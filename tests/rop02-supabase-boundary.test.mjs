@@ -16,9 +16,10 @@ test("las cuatro fuentes ROP02 declaradas se resuelven desde Supabase",()=>{
   assert.match(api,/"rop02_fs","rop02_jm","rop02_filosur","rop02_zorro"/);
   assert.match(api,/TYPED_SUPABASE_SOURCES\.has\(source\).*getOperationalSource/s);
   assert.match(repo,/getRop02Source_/);
-  assert.match(repo,/\.from\("rop02"\)/);
-  assert.match(repo,/\.eq\("source_dataset",sourceDataset\)/);
-  assert.match(repo,/\.not\("source_row","is",null\)/);
+  assert.match(repo,/ROP02_FRONTEND_TABLE="rop02_frontend"/);
+  assert.match(repo,/\.from\(ROP02_FRONTEND_TABLE\)/);
+  assert.match(repo,/\.like\("source_key",`\$\{sourceKeyPrefix\}%`\)/);
+  assert.doesNotMatch(repo,/getRop02Source_[\s\S]*?\.from\("rop02"\)/);
 });
 
 test("las pantallas ROP02 no consultan query_dataset directamente",()=>{
@@ -40,4 +41,10 @@ test("el servicio histórico ROP02 es exclusivamente Supabase",()=>{
   assert.match(service,/getRop02Page/);
   assert.match(service,/getSupabaseOperationalSnapshot/);
   assert.doesNotMatch(service,/legacy-fallback|APPS_SCRIPT_URL|query_dataset/);
+});
+
+test("Ficha Única conserva el historial ROP02 ya normalizado por aliases",()=>{
+  const profile=read("../src/modules/equipment/EquipmentProfileView.jsx");
+  assert.match(profile,/const rop02All=propRop02All/);
+  assert.doesNotMatch(profile,/fetchAllDatasetPages\("rop02"/);
 });
