@@ -408,7 +408,9 @@ export default function App(){
     const insumosMap={};
     if(src.insumos?.ok&&src.insumos.data){
       src.insumos.data.forEach(r=>{
-        const cod=normalizeInsumoCode(getValue(r,["CODIGO","Codigo","Código","codigo","código","Cod","cod"])||"");
+        // La fuente vigente usa "Cód. artículo". Mantenerla primero evita que
+        // una coincidencia parcial tome otra columna "Código" de la fila.
+        const cod=normalizeInsumoCode(getValue(r,["Cód. artículo","Cod. artículo","Cód articulo","Cod articulo","CODIGO","Codigo","Código","codigo","código","Cod","cod"])||"");
         if(cod){
           const descripcion=String(getValue(r,["DESCRIPCIÓN","DESCRIPCION","Descripción","Descripcion","descripcion","Artículo","Articulo","ARTICULO","Insumo","Nombre"])||"").trim();
           insumosMap[cod]={

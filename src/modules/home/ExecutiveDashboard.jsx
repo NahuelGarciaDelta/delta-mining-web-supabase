@@ -5,8 +5,7 @@ import { fetchAction } from "../../services/appsScriptApi.js";
 import { fetchStockData } from "../../services/stockService.js";
 import { PM_INITIAL_SEED } from "../mantenimiento/pmInitialSeed.js";
 import FleetUtilizationPanel from "./FleetUtilizationPanel.jsx";
-import {getRma15,getRop02,getRop02MonthlySummary} from "../../data/historicalDataService.js";
-import {normalizeRMA15,normalizeROP02} from "../../shared/domain/index.jsx";
+import {getValue,normalizeInsumoCode,toMoneyNumber} from "../../shared/domain/index.jsx";
 import {
   Area,
   AreaChart,
@@ -118,9 +117,30 @@ export default function ExecutiveDashboard({rop02All:propRop02All=[],rop05=[],rm
     }catch(_){}
     return 1400;
   },[usdRate]);
+  // La normalización global calcula costoTotal al hidratar App. Como el catálogo
+  // puede llegar después que RMA15, el dashboard reconstruye el valor desde las
+  // mismas filas fuente si ese total todavía quedó en cero.
+  const insumoPriceByCode=useMemo(()=>{
+    const prices=new Map();
+    safe(rawSources?.insumos?.data).forEach(row=>{
+      const code=normalizeInsumoCode(getValue(row,["Cód. artículo","Cod. artículo","Cód articulo","Cod articulo","Código","Codigo","CODIGO","Cod"])||"");
+      const price=toMoneyNumber(getValue(row,["Costo unitario","Precio unitario con IVA","Precio unitario","PRECIO UNITARIO","Precio","Costo"]));
+      if(code&&price>0)prices.set(code,price);
+    });
+    return prices;
+  },[rawSources?.insumos?.data]);
+  const maintCostResolved=r=>{
+    const direct=maintCost(r);
+    if(direct>0)return direct;
+    return safe(r?.insumos).reduce((total,item)=>{
+      const quantity=num(item?.cantidad);
+      const unitPrice=num(item?.costoUnitario)||num(insumoPriceByCode.get(normalizeInsumoCode(item?.codigo)));
+      return total+(quantity>0&&unitPrice>0?quantity*unitPrice:0);
+    },0);
+  };
   const maintCostUsd=r=>{
     // RMA15 almacena el costo de mantenimiento en ARS. El dashboard siempre lo expresa en USD.
-    const ars=maintCost(r);
+    const ars=maintCostResolved(r);
     return ars>0?ars/usdRateSafe:0;
   };
   const [selectedMonth,setSelectedMonth]=useState(()=>reportingMonthForDate(today));
@@ -148,20 +168,13 @@ export default function ExecutiveDashboard({rop02All:propRop02All=[],rop05=[],rm
     if(chosen)return[chosen.start,chosen.end];
     return prevRange(from,to);
   },[from,to,comparisonMonth]);
-  const [remoteRop02,setRemoteRop02]=useState(null);
-  const [remoteRma15,setRemoteRma15]=useState(null);
-  useEffect(()=>{
-    let alive=true;
-    const desde=prevFrom<from?prevFrom:from,hasta=prevTo>to?prevTo:to;
-    Promise.all([
-      getRop02({desde,hasta,limit:"all",sortBy:"fecha",sortDirection:"asc"}),
-      getRop02MonthlySummary({desde,hasta}),
-      getRma15({desde,hasta,limit:"all",sortBy:"fecha",sortDirection:"asc"}),
-    ]).then(([detail,,maintenance])=>{if(alive){setRemoteRop02(normalizeROP02(detail.data||[]));setRemoteRma15((maintenance.data||[]).map(row=>normalizeRMA15({...row,_proyectoForzado:row.Proyecto||row.proyecto||"S/D"},{})));}}).catch(()=>{});
-    return()=>{alive=false;};
-  },[from,to,prevFrom,prevTo]);
-  const rop02All=remoteRop02??propRop02All;
-  const rma15=remoteRma15??propRma15;
+  // El Dashboard necesita el universo anual completo para las evoluciones
+  // mensuales y el RMA15 ya normalizado con costos de insumos. La consulta
+  // acotada al mes seleccionado reemplazaba ambos datasets por sólo el período
+  // actual/anterior y, al no llevar el catálogo de insumos, dejaba costos en 0.
+  // Igual que OPS, se filtra el universo completo recién en cada indicador.
+  const rop02All=propRop02All;
+  const rma15=propRma15;
   const current=useMemo(()=>safe(rop02All).filter(r=>inRange(r,from,to)&&!r?._excluded),[rop02All,from,to]);
   const previous=useMemo(()=>safe(rop02All).filter(r=>inRange(r,prevFrom,prevTo)&&!r?._excluded),[rop02All,prevFrom,prevTo]);
   const maintNow=useMemo(()=>safe(rma15).filter(r=>inRange(r,from,to)),[rma15,from,to]);
@@ -176,7 +189,7 @@ export default function ExecutiveDashboard({rop02All:propRop02All=[],rop05=[],rm
       return{hours:rows.reduce((s,r)=>s+num(r?.horas),0),availability:pct(available,states.length),utilization:pct(working,states.length)};
     };
     const a=calc(current),b=calc(previous);const cost=maintNow.reduce((s,r)=>s+maintCostUsd(r),0),costPrev=maintPrev.reduce((s,r)=>s+maintCostUsd(r),0);return{...a,cost,costHour:a.hours?cost/a.hours:0,dHours:delta(a.hours,b.hours),dAvail:a.availability-b.availability,dUtil:a.utilization-b.utilization,dCost:delta(cost,costPrev),dCostHour:delta(a.hours?cost/a.hours:0,b.hours?costPrev/b.hours:0)};
-  },[current,previous,maintNow,maintPrev,usdRateSafe]);
+  },[current,previous,maintNow,maintPrev,usdRateSafe,insumoPriceByCode]);
 
   const pm=useMemo(()=>{
     // Replica la lógica de Mantenimiento Programado, pero calculada al cierre del filtro "Hasta".
@@ -281,7 +294,7 @@ export default function ExecutiveDashboard({rop02All:propRop02All=[],rop05=[],rm
     const work=days.filter(s=>s==="TRABAJO").length;const avail=days.filter(s=>s==="TRABAJO"||s==="OD").length;
     const mr=maintNow.filter(r=>projectKey(r?.proyecto)===key);const cost=mr.reduce((s,r)=>s+maintCostUsd(r),0);const hours=rows.reduce((s,r)=>s+num(r?.horas),0);
     return{key,name:key==="JM"?"José María":"Filo del Sol",availability:pct(avail,days.length),utilization:pct(work,days.length),hours,cost,costHour:hours?cost/hours:0};
-  }),[current,maintNow,dayStates,usdRateSafe]);
+  }),[current,maintNow,dayStates,usdRateSafe,insumoPriceByCode]);
 
   const alerts=useMemo(()=>{
     // FS: contar EQUIPOS distintos que tengan al menos un registro FS con 0 h dentro del rango.
@@ -351,7 +364,7 @@ export default function ExecutiveDashboard({rop02All:propRop02All=[],rop05=[],rm
     return out.slice(0,last+1);
   },[rop02All,selectedMonth,from,to]);
 
-  const maintSplit=useMemo(()=>{let prev=0,corr=0,other=0;maintNow.forEach(r=>{const c=maintCostUsd(r);const t=maintType(r);if(t==="PREV")prev+=c;else if(t==="CORR")corr+=c;else other+=c;});return[{name:"Preventivo",value:prev,color:C.green},{name:"Correctivo",value:corr,color:C.red},{name:"Otros",value:other,color:C.textMuted}].filter(x=>x.value>0);},[maintNow,usdRateSafe]);
+  const maintSplit=useMemo(()=>{let prev=0,corr=0,other=0;maintNow.forEach(r=>{const c=maintCostUsd(r);const t=maintType(r);if(t==="PREV")prev+=c;else if(t==="CORR")corr+=c;else other+=c;});return[{name:"Preventivo",value:prev,color:C.green},{name:"Correctivo",value:corr,color:C.red},{name:"Otros",value:other,color:C.textMuted}].filter(x=>x.value>0);},[maintNow,usdRateSafe,insumoPriceByCode]);
   const stateHours=useMemo(()=>{const m={TRABAJO:0,OD:0,EM:0,FS:0,"S/D":0};equipmentDayStates.forEach(r=>{m[m[r.state]!=null?r.state:"S/D"]+=1;});return m;},[equipmentDayStates]);
   const stateTotal=useMemo(()=>["TRABAJO","OD","EM","FS"].reduce((a,k)=>a+stateHours[k],0),[stateHours]);
   const topEquipment=useMemo(()=>{const m={};current.forEach(r=>{const c=code(r);if(!c)return;if(!m[c])m[c]={hours:0,project:r?.proyecto||"S/D"};m[c].hours+=num(r?.horas);});return Object.entries(m).sort((a,b)=>b[1].hours-a[1].hours).slice(0,5).map(([name,d])=>({name,...d}));},[current]);

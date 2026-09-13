@@ -12,11 +12,17 @@ test("Bienvenida conserva consultas compactas y precarga ROP02 global desde Supa
   assert.match(sources,/bienvenida:\["lista_equipos","rop02_fs","rop02_jm","rop02_filosur","rop02_zorro","rma15_fs","rma15_jm"\]/);
 });
 
-test("Dashboard conserva resumen mensual y fuentes globales del original",()=>{
+test("Dashboard conserva el universo anual y costos RMA15 normalizados del original",()=>{
   const view=read("../src/modules/home/ExecutiveDashboard.jsx");
-  assert.match(view,/getRop02MonthlySummary/);
-  assert.match(view,/getRop02\(\{desde,hasta,limit:"all"/);
-  assert.match(view,/getRma15\(\{desde,hasta,limit:"all"/);
+  assert.match(view,/const rop02All=propRop02All/);
+  assert.match(view,/const rma15=propRma15/);
+  assert.doesNotMatch(view,/setRemoteRop02|setRemoteRma15|getRop02MonthlySummary/);
+  assert.match(view,/const insumoPriceByCode=useMemo/);
+  assert.match(view,/const maintCostResolved=r=>/);
+  assert.match(view,/normalizeInsumoCode\(item\?\.codigo\)/);
+  assert.match(view,/\[current,previous,maintNow,maintPrev,usdRateSafe,insumoPriceByCode\]/);
+  const app=read("../src/App.jsx");
+  assert.match(app,/\["Cód\. artículo","Cod\. artículo","Cód articulo"/);
   assert.match(sources,/dashboard:\["rop02_fs","rop02_jm","rop02_filosur","rop02_zorro","rop05","rma15_fs","rma15_jm","insumos","lista_equipos"\]/);
 });
 

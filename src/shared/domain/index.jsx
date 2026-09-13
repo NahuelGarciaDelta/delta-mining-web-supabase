@@ -978,7 +978,15 @@ function normalizeRMA15(r, insumosMap){
   const proyecto=r["_proyectoForzado"]||"S/D"; // Proyecto siempre viene forzado desde la fuente
   // Insumos: cruzar codigo con base de datos
   const insumos=[];
-  for(let i=1;i<=10;i++){
+  // La tabla tipada conserva la posición original del array de insumos. Algunas
+  // cargas comienzan en 0 y otras en 1; el bucle fijo 1..10 descartaba por
+  // completo el primer ítem de las OTs indexadas en cero y el costo quedaba 0.
+  const posiciones=new Set(Array.from({length:10},(_,i)=>i+1));
+  Object.keys(r||{}).forEach(key=>{
+    const match=String(key).trim().match(/^codigo\s+(\d+)$/i);
+    if(match)posiciones.add(Number(match[1]));
+  });
+  for(const i of [...posiciones].sort((a,b)=>a-b)){
     const cant=parseFloat(String(r["cantidad "+i]||"0").replace(/[^0-9.]/g,""))||0;
     const cod=normalizeInsumoCode(r["codigo "+i]||"");
     const nombre=String(r["nombre "+i]||"").trim();
