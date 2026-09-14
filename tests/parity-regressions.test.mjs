@@ -47,21 +47,33 @@ test("el transformador de perfil de equipo declara selectedProject antes de usar
 });
 
 test("Control de horas conserva el control diario con filtros y exportación",()=>{
-  const source=read("src/modules/oficina-tecnica/OficinaTecnicaModule.jsx");
-  assert.match(source,/Control diario/);
-  assert.match(source,/filtro/iu);
-  assert.match(source,/export/iu);
+  const index=read("src/modules/analytics/index.js");
+  const source=read("src/modules/analytics/ViewCambiosTurnoEnhanced.jsx");
+
+  assert.match(index,/ViewCambiosTurnoEnhanced/);
+  assert.match(source,/Control diario de Hi y N°/);
+  assert.match(source,/const \[dailyProyecto,setDailyProyecto\]/);
+  assert.match(source,/const exportControlDiario=/);
+  assert.match(source,/N° parte a cargar/);
 });
 
 test("MultiSel conserva selecciones hasta cerrar su menú y App navega fechas únicas",()=>{
   const ui=read("src/components/ui/index.jsx");
   const app=read("src/App.jsx");
-  assert.match(ui,/MultiSel/);
-  assert.match(app,/date|fecha/iu);
+
+  assert.match(ui,/commitOnClose=true/);
+  assert.match(ui,/data-multisel-menu="true"/);
+  assert.match(ui,/e\.target\?\.closest\?\.\('\[data-multisel-menu="true"\]'\)/);
+  assert.match(app,/const onDateArrow=\(event\)=>/);
+  assert.match(app,/if\(inputs\.length!==1\)return/);
+  assert.doesNotMatch(app,/const globalPreloadRef=/);
 });
 
 test("login reintenta fallas transitorias sin reemplazar el adaptador de autenticación",()=>{
   const login=read("src/modules/auth/Login.jsx");
-  assert.match(login,/authenticateUser/);
-  assert.match(login,/retry|reint/iu);
+
+  assert.match(login,/const AUTH_TIMEOUT_MS=25000/);
+  assert.match(login,/const AUTH_MAX_ATTEMPTS=2/);
+  assert.match(login,/for\(let intento=1;intento<=AUTH_MAX_ATTEMPTS;intento\+\+\)/);
+  assert.match(login,/authenticateUser\(APPS_SCRIPT_URL,mail,pass\)/);
 });
