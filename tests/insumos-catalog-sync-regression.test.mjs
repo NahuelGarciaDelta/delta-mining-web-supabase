@@ -9,5 +9,9 @@ test("la sincronización de insumos preserva el código del encabezado vigente",
   assert.ok(typedCatalog,"debe existir el mapeo tipado del catálogo de insumos");
   assert.match(typedCatalog[1],/"Cód\. artículo"/);
   assert.match(typedCatalog[1],/"Cod\. artículo"/);
-  assert.match(script,/precio_unitario:String\(deltaNumber_\(deltaPick_\(r,\["Precio unitario","Costo unitario","Precio unitario con IVA"\]\)\)\)/);
+  assert.match(script,/sheet: "Hoja 1"/);
+  assert.match(script,/label: "Informe de insumos comprados — Hoja 1"/);
+  assert.match(script,/function deltaMoney_\(value\)/);
+  assert.match(script,/precio_unitario:String\(deltaMoney_\(deltaPick_\(r,\["Precio unitario con IVA","PRECIO UNITARIO CON IVA","precio unitario con IVA","Precio unitario","Costo unitario"\]\)\)\)/);
+  assert.match(script,/var dd=s\.length-dot-1;s=dd>0&&dd<=2/);
 });

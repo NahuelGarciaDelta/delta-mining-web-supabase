@@ -1,10 +1,10 @@
 export const APP_FILTERS_STATE_KEY="dm_app_filters_state_v1";
-const APP_IDB_NAME="delta_mining_cache_backend_20260818_v5";
+const APP_IDB_NAME="delta_mining_cache_backend_20260914_v6";
 const APP_IDB_VERSION=1;
 const APP_IDB_STORE="datasets";
-const APP_CACHE_VERSION=5;
-const APP_CACHE_MANIFEST_KEY="dm_app_cache_manifest_v5";
-const APP_LOCAL_CACHE_PREFIX="dm_app_cache_source_v5_";
+const APP_CACHE_VERSION=6;
+const APP_CACHE_MANIFEST_KEY="dm_app_cache_manifest_v6";
+const APP_LOCAL_CACHE_PREFIX="dm_app_cache_source_v6_";
 
 let appCacheDBPromise_=null;
 const memoryCache_=new Map();

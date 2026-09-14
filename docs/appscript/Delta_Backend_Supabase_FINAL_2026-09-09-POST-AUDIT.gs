@@ -1,4 +1,4 @@
-var DELTA_BACKEND_VERSION_ = "2026-09-09-SUPABASE-SYNC-V1";
+var DELTA_BACKEND_VERSION_ = "2026-09-14-HOJA1-CATALOG-V9";
 
 var SHEETS_CONFIG = {
   rop05: {
@@ -60,8 +60,8 @@ var SHEETS_CONFIG = {
   insumos: {
     id: "1MKrJA-W_pj_Z1Dmk9ec9614oA9nnSy3SXn1b2iokpr8",
     gid: "",
-    sheet: "Resumen de compras por artículo",
-    label: "Informe de insumos comprados",
+    sheet: "Hoja 1",
+    label: "Informe de insumos comprados — Hoja 1",
     proyecto: null,
     headerRow: 1
   },
@@ -5493,6 +5493,18 @@ function deltaNumber_(value){
   else if(dot!==-1){var dd=s.length-dot-1;s=dd>0&&dd<=2?s.replace(/,/g,""):s.replace(/\./g,"");}
   return parseFloat(s)||0;
 }
+// Los importes de Hoja 1 vienen con hasta tres decimales (por ejemplo
+// "379822.509"). Para precios, un punto único siempre es decimal; deltaNumber_
+// conserva su heurística histórica para cantidades y horómetros.
+function deltaMoney_(value){
+  if(value===null||value===undefined||value==="")return 0;
+  if(typeof value==="number")return isFinite(value)?value:0;
+  var s=String(value).trim().replace(/[^\d,.-]/g,"");if(!s)return 0;
+  var comma=s.lastIndexOf(","),dot=s.lastIndexOf(".");
+  if(comma!==-1&&dot!==-1){if(comma>dot)s=s.replace(/\./g,"").replace(",",".");else s=s.replace(/,/g,"");}
+  else if(comma!==-1)s=s.replace(/\./g,"").replace(",",".");
+  return parseFloat(s)||0;
+}
 function deltaIsoDate_(value){
   if(value instanceof Date)return formatDate(value);
   var s=String(value||"").trim();if(/^\d{4}-\d{2}-\d{2}/.test(s))return s.slice(0,10);
@@ -5528,7 +5540,7 @@ function deltaTypedRow_(key,entry){
   // El informe vigente de compras usa "Cód. artículo". Si se omite ese
   // encabezado, los artículos llegan sin código a Supabase y RMA15 no puede
   // cruzar sus insumos contra los precios unitarios.
-  return Object.assign(base,{codigo:String(deltaPick_(r,["Cód. artículo","Cod. artículo","Cód articulo","Cod articulo","Código artículo","Codigo articulo","Codigo","Código"])||""),descripcion:String(deltaPick_(r,["Descripcion","Descripción","Descripción del artículo","Descripcion del articulo"])||""),precio_unitario:String(deltaNumber_(deltaPick_(r,["Precio unitario","Costo unitario","Precio unitario con IVA"]))),descripcion_adicional:String(deltaPick_(r,["Descripcion adicional","Descripción adicional"])||"")});
+  return Object.assign(base,{codigo:String(deltaPick_(r,["Cód. artículo","Cod. artículo","Cód articulo","Cod articulo","Código artículo","Codigo articulo","Codigo","Código"])||""),descripcion:String(deltaPick_(r,["Descripcion","Descripción","Descripción del artículo","Descripcion del articulo"])||""),precio_unitario:String(deltaMoney_(deltaPick_(r,["Precio unitario con IVA","PRECIO UNITARIO CON IVA","precio unitario con IVA","Precio unitario","Costo unitario"]))),descripcion_adicional:String(deltaPick_(r,["Descripcion adicional","Descripción adicional"])||"")});
 }
 function deltaSyncTyped_(key){var s=deltaReadSourceRows_(key),rows=s.rows.map(function(x){return deltaTypedRow_(key,x);});var out=deltaSupabaseRpc_("sync_typed_dataset",{p_dataset:key,p_rows:rows});out.sheetRows=rows.length;return out;}
 function deltaSyncGeneric_(key){var s=deltaReadSourceRows_(key),out=deltaSupabaseRpc_("sync_generic_dataset",{p_dataset:key,p_rows:s.rows,p_source_version:getDatasetVersion_(key)});out.sheetRows=s.rows.length;return out;}
