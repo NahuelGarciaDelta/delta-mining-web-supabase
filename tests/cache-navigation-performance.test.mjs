@@ -20,7 +20,9 @@ test("la vista activa no difiere la carga con requestIdleCallback",()=>{
   assert.match(app,/loadSources\(VIEW_SOURCES\[view\]\|\|\[\],\{background:true\}\)\.catch/);
 });
 
-test("Abastecimiento no depende de un chunk lazy en la primera apertura",()=>{
-  assert.match(route,/import \{ AbastecimientoModule \}/);
-  assert.doesNotMatch(route,/React\.lazy|Suspense/);
+test("Abastecimiento conserva la carga lazy vigente de OPS y su fallback",()=>{
+  assert.match(route,/React\.lazy/);
+  assert.match(route,/import\("\.\/AbastecimientoModule\.jsx"\)/);
+  assert.match(route,/React\.Suspense/);
+  assert.match(route,/PageLoadingMotoniveladora/);
 });
