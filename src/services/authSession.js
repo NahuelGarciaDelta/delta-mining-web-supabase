@@ -19,6 +19,17 @@ export function getAuthenticatedUser() {
   }
 }
 
+export function getAuthContext() {
+  const user = getAuthenticatedUser() || {};
+  const authToken = String(user.authToken || user.token || sessionStorage.getItem("dm_auth_token") || "").trim();
+  return {
+    ...user,
+    email: String(user.email || sessionStorage.getItem("dm_user") || "").trim().toLowerCase(),
+    authToken,
+    token: authToken,
+  };
+}
+
 export function saveAuthenticatedSession(user, { mustChangePassword = false, normalizeProject = value => value || "TODO" } = {}) {
   const authenticatedUser = { ...user };
   const email = String(authenticatedUser.email || "").trim().toLowerCase();
@@ -43,6 +54,7 @@ export function updateAuthenticatedUser(patch) {
   if (!current) return null;
   const next = { ...current, ...patch };
   sessionStorage.setItem(AUTHENTICATED_USER_KEY, JSON.stringify(next));
+  if (patch?.authToken || patch?.token) sessionStorage.setItem("dm_auth_token", String(patch.authToken || patch.token || ""));
   return next;
 }
 
