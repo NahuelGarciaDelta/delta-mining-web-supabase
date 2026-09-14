@@ -8,7 +8,8 @@ update public.app_sync_outbox
 set status=case when synced_at is null then 'pending' else 'synced' end
 where status is null or status not in ('pending','synced','failed');
 
-create or replace function public.app_sync_outbox_pull(p_limit integer default 100)
+drop function if exists public.app_sync_outbox_pull(integer);
+create function public.app_sync_outbox_pull(p_limit integer default 100)
 returns table(
   id bigint,
   domain text,
