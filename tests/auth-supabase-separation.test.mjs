@@ -10,7 +10,8 @@ test("el login autentica exclusivamente mediante Supabase",async()=>{
   ]);
   assert.match(login,/authenticateUser\(APPS_SCRIPT_URL,mail,pass\)/);
   assert.match(api,/rpc\("app_authenticate_user"/);
-  assert.match(api,/rpc\("app_update_user_profile"/);
+  assert.match(api,/rpc\("app_update_user_profile_v2"/);
+  assert.match(api,/p_auth_token:authToken_\(\)/);
   assert.match(appConfig,/VITE_APPS_SCRIPT_URL/);
   const loginForbidden=/rop02Repository|VITE_ROP02_SOURCE|VITE_SUPABASE_/;
   assert.doesNotMatch(login,loginForbidden);
