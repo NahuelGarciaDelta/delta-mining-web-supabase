@@ -1,12 +1,17 @@
 import {requireSupabase} from "./supabaseClient.js";
 import {readCachedSource,writeCachedSource,clearDatasetCache} from "./appCache.js";
+import {getAuthContext} from "./authSession.js";
 
 const CACHE_PREFIX="supabase_taller_movements:";
 const TYPES=["SUBIDA","BAJA","MOVILIZACION","CAMBIO_EQUIPO"];
-const actor=()=>String(sessionStorage.getItem("dm_user")||"APP").trim().toLowerCase()||"APP";
 const normalizeType=value=>String(value||"").trim().toUpperCase().replace(/\s+/g,"_");
 const text=value=>String(value||"").trim().toUpperCase().normalize("NFD").replace(/[\u0300-\u036f]/g,"");
 const cacheKey=type=>`${CACHE_PREFIX}${normalizeType(type)}`;
+const authToken=()=>{
+  const token=String(getAuthContext()?.authToken||"").trim();
+  if(!token)throw new Error("La sesión no es válida. Volvé a iniciar sesión.");
+  return token;
+};
 
 async function rpc(name,args={}){
   const {data,error}=await requireSupabase().rpc(name,args);
@@ -80,12 +85,12 @@ async function invalidate(type){
 }
 
 export async function saveTallerMovement(movement){
-  const value=await rpc("app_taller_movement_save",{p_movement:movement||{},p_actor:actor()});
+  const value=await rpc("app_taller_movement_save_v2",{p_movement:movement||{},p_auth_token:authToken()});
   await invalidate(movement?.tipo);
   return value;
 }
 export async function updateTallerMovement(id,movement){return saveTallerMovement({...movement,id:String(id||"")});}
 export async function deleteTallerMovement(id,_usuario){
-  const value=await rpc("app_taller_movement_delete",{p_id:String(id||""),p_actor:actor()});
+  const value=await rpc("app_taller_movement_delete_v2",{p_id:String(id||""),p_auth_token:authToken()});
   await invalidate();return value;
 }
