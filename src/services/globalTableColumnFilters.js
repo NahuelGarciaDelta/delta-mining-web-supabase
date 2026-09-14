@@ -39,9 +39,6 @@ function installStyles(){
 
 function hasNativeColumnFilters(table){
   const scrollHost=table.closest?.(".dm-table-scroll")||table.parentElement;
-  // La tabla compartida de la app renderiza su barra inmediatamente antes del
-  // contenedor de scroll. Miramos sólo ese hermano para no confundir dos tablas
-  // distintas que estén dentro del mismo card.
   const nativeToolbar=scrollHost?.previousElementSibling;
   if(!nativeToolbar)return false;
   return [...nativeToolbar.querySelectorAll?.("button")||[]]
@@ -125,7 +122,6 @@ function setOpen(table,open){
   if(state.open){ensureFilterRow(table);return;}
   if(state.row?.isConnected)state.row.remove();
   state.row=null;
-  // Igual que la tabla nativa: ocultar la fila de filtros no borra los criterios.
   applyFilters(table);
 }
 
@@ -155,10 +151,8 @@ function ensureToolbar(table){
 }
 
 function eligible(table){
-  if(!(table instanceof HTMLTableElement)||!visible(table))return false;
+  if(!table||String(table.tagName||"").toUpperCase()!=="TABLE"||!visible(table))return false;
   if(table.closest?.("[data-dm-disable-global-column-filters='1']"))return false;
-  // Los gráficos de Recharts pueden contener estructuras auxiliares. Nunca se
-  // debe inyectar la barra global de filtros dentro de un dashboard/gráfico.
   if(table.closest?.(".recharts-wrapper,.recharts-responsive-container,[class*='recharts-']"))return false;
   if(hasNativeColumnFilters(table))return false;
   return leafHeaderLabels(table).length>0;
@@ -186,8 +180,6 @@ export function installGlobalTableColumnFilters(){
     raf=requestAnimationFrame(()=>{raf=0;scan();});
   };
   const observer=new MutationObserver(mutations=>{
-    // Sólo reaccionar ante cambios estructurales. Los cambios de clase producidos
-    // por el propio filtro no deben disparar otro ciclo del observer.
     if(mutations.some(mutation=>mutation.type==="childList"))schedule();
   });
   observer.observe(document.documentElement,{childList:true,subtree:true});
