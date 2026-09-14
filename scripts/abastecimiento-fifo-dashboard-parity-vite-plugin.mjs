@@ -3,7 +3,6 @@ const normalizeId=id=>String(id||"").replace(/\\/g,"/").split("?")[0];
 const DOWNLOAD_RE=/  const raba03DownloadRows=useMemo\(\(\)=>\{[\s\S]*?\n  \},\[sortedRows,remitosByCode,normCode,normalizeCentroCosto,calcularIndicadorRABA03\]\);/;
 const DASHBOARD_RE=/  const raba03DashboardRows=useMemo\(\(\)=>\{[\s\S]*?\n  \},\[assignedRows,remitosByCode,normCode,normalizeCentroCosto,calcularIndicadorRABA03\]\);/;
 const SAVE_RE=/  const guardarDatosRABA03=useCallback\(async\(\)=>\{[\s\S]*?\n  \},\[rows,toNumber,loadRaba03,normCode,normalizeCentroCosto,remitosByCode\]\);/;
-const UNMATCHED_RE=/  const enviosSinSolicitudRows=useMemo\(\(\)=>\{[\s\S]*?\n  \},\[rows,remitos,normCode,toNumber,parseRabaDateMs\]\);/;
 
 const DOWNLOAD=`  const raba03DownloadRows=useMemo(()=>{
     const out=[];
@@ -84,14 +83,14 @@ const SAVE=`  const guardarDatosRABA03=useCallback(async()=>{
     }
   },[rows,toNumber,loadRaba03]);`;
 
-const UNMATCHED=`  const enviosSinSolicitudRows=useMemo(()=>{
-    const base=(rows||[]).map(r=>({...r,cantidadEnviada:0,cantidadRestante:Math.max(0,toNumber(r.cantidadSolicitada)),_matchedRemitos:[]}));
-    return allocateRemitosToRequests(base,remitos).unmatched.sort((a,b)=>{
-      const fa=parseChronoDateMs(a.fechaEnvio),fb=parseChronoDateMs(b.fechaEnvio);
-      if(fa!==fb)return fb-fa;
-      return String(a.codigoArticulo||"").localeCompare(String(b.codigoArticulo||""),"es",{numeric:true,sensitivity:"base"});
-    });
-  },[rows,remitos,toNumber,allocateRemitosToRequests]);`;
+const UNMATCHED=`  const enviosSinSolicitudRows=useMemo(()=>buildEnviosSinSolicitudRows({
+    raba03Rows:rawRaba03RowsRef.current,
+    remitos,
+    normCode,
+    toNumber,
+    normalizeCentroCosto,
+    parseChronoDateMs
+  }),[rows,remitos,normCode,toNumber,normalizeCentroCosto]);`;
 
 export function abastecimientoFifoDashboardParityVitePlugin(){
   return{
@@ -100,12 +99,27 @@ export function abastecimientoFifoDashboardParityVitePlugin(){
     transform(code,id){
       const file=normalizeId(id);
       if(!file.endsWith("/src/modules/abastecimiento/AbastecimientoModule.jsx"))return null;
-      const required=[[DOWNLOAD_RE,"descarga RABA03"],[DASHBOARD_RE,"dashboard RABA03"],[SAVE_RE,"guardado RABA03"],[UNMATCHED_RE,"envíos sin solicitud"]];
+      const required=[[DOWNLOAD_RE,"descarga RABA03"],[DASHBOARD_RE,"dashboard RABA03"],[SAVE_RE,"guardado RABA03"]];
       for(const [re,label] of required){if(!re.test(code))throw new Error(`[abastecimiento-fifo] No se encontró el bloque esperado: ${label}`);}
-      let next=code.replace(DOWNLOAD_RE,DOWNLOAD);
+
+      let next=code.replace(
+        'import { registerRefreshTask } from "../../services/refreshManager.js";',
+        'import { registerRefreshTask } from "../../services/refreshManager.js";\nimport { buildEnviosSinSolicitudRows } from "./enviosSinSolicitud.js";'
+      );
+      next=next.replace(DOWNLOAD_RE,DOWNLOAD);
       next=next.replace(DASHBOARD_RE,DASHBOARD);
       next=next.replace(SAVE_RE,SAVE);
-      next=next.replace(UNMATCHED_RE,UNMATCHED);
+
+      const unmatchedStart='  const enviosSinSolicitudRows=useMemo(()=>{';
+      const unmatchedEnd='\n  const exportarEnviosSinSolicitud=useCallback(()=>{';
+      const start=next.indexOf(unmatchedStart);
+      const end=start>=0?next.indexOf(unmatchedEnd,start):-1;
+      if(start<0||end<0)throw new Error('[abastecimiento-fifo] No se encontró el bloque esperado: envíos sin solicitud');
+      next=next.slice(0,start)+UNMATCHED+next.slice(end);
+
+      if(!next.includes('buildEnviosSinSolicitudRows({')||!next.includes('raba03Rows:rawRaba03RowsRef.current')){
+        throw new Error('[abastecimiento-fifo] No se aplicó la lógica real de envíos sin solicitud');
+      }
       return{code:next,map:null};
     }
   };
