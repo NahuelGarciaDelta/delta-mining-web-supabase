@@ -83,14 +83,20 @@ const SAVE=`  const guardarDatosRABA03=useCallback(async()=>{
     }
   },[rows,toNumber,loadRaba03]);`;
 
-const UNMATCHED=`  const enviosSinSolicitudRows=useMemo(()=>buildEnviosSinSolicitudRows({
-    raba03Rows:rawRaba03RowsRef.current,
-    remitos,
-    normCode,
-    toNumber,
-    normalizeCentroCosto,
-    parseChronoDateMs
-  }),[rows,remitos,normCode,toNumber,normalizeCentroCosto]);`;
+const UNMATCHED=`  const enviosSinSolicitudRows=useMemo(()=>{
+    const solicitudesValidas=(rows||[]).filter(row=>!rejectedSolicitudes?.[buildSolicitudKey(row)]);
+    const base=solicitudesValidas.map(row=>({
+      ...row,
+      cantidadEnviada:0,
+      cantidadRestante:Math.max(0,toNumber(row.cantidadSolicitada)),
+      _matchedRemitos:[]
+    }));
+    return allocateRemitosToRequests(base,remitos).unmatched.sort((a,b)=>{
+      const fa=parseChronoDateMs(a.fechaEnvio),fb=parseChronoDateMs(b.fechaEnvio);
+      if(fa!==fb)return fb-fa;
+      return String(a.codigoArticulo||"").localeCompare(String(b.codigoArticulo||""),"es",{numeric:true,sensitivity:"base"});
+    });
+  },[rows,remitos,toNumber,allocateRemitosToRequests,rejectedSolicitudes,buildSolicitudKey]);`;
 
 export function abastecimientoFifoDashboardParityVitePlugin(){
   return{
@@ -102,10 +108,7 @@ export function abastecimientoFifoDashboardParityVitePlugin(){
       const required=[[DOWNLOAD_RE,"descarga RABA03"],[DASHBOARD_RE,"dashboard RABA03"],[SAVE_RE,"guardado RABA03"]];
       for(const [re,label] of required){if(!re.test(code))throw new Error(`[abastecimiento-fifo] No se encontró el bloque esperado: ${label}`);}
 
-      let next=code.replace(
-        'import { registerRefreshTask } from "../../services/refreshManager.js";',
-        'import { registerRefreshTask } from "../../services/refreshManager.js";\nimport { buildEnviosSinSolicitudRows } from "./enviosSinSolicitud.js";'
-      );
+      let next=code;
       next=next.replace(DOWNLOAD_RE,DOWNLOAD);
       next=next.replace(DASHBOARD_RE,DASHBOARD);
       next=next.replace(SAVE_RE,SAVE);
@@ -117,8 +120,11 @@ export function abastecimientoFifoDashboardParityVitePlugin(){
       if(start<0||end<0)throw new Error('[abastecimiento-fifo] No se encontró el bloque esperado: envíos sin solicitud');
       next=next.slice(0,start)+UNMATCHED+next.slice(end);
 
-      if(!next.includes('buildEnviosSinSolicitudRows({')||!next.includes('raba03Rows:rawRaba03RowsRef.current')){
-        throw new Error('[abastecimiento-fifo] No se aplicó la lógica real de envíos sin solicitud');
+      if(!next.includes('solicitudesValidas=(rows||[]).filter(row=>!rejectedSolicitudes?.[buildSolicitudKey(row)])')){
+        throw new Error('[abastecimiento-fifo] Envíos sin solicitud debe excluir solicitudes rechazadas');
+      }
+      if(!next.includes('allocateRemitosToRequests(base,remitos).unmatched')){
+        throw new Error('[abastecimiento-fifo] No se aplicó el FIFO de envíos sin solicitud');
       }
       return{code:next,map:null};
     }
