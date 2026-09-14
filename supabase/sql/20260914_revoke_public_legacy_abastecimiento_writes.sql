@@ -1,0 +1,15 @@
+-- Applied to project jwfocqaxlckuxoklwyxs on 2026-09-14.
+revoke all on function public.abastecimiento_append_raba03(jsonb) from public,anon,authenticated;
+revoke all on function public.abastecimiento_delete_raba03_solicitud(text) from public,anon,authenticated;
+revoke all on function public.abastecimiento_delete_raba03_solicitud(text,text) from public,anon,authenticated;
+revoke all on function public.abastecimiento_delete_remito(text,text) from public,anon,authenticated;
+revoke all on function public.abastecimiento_save_remito(jsonb) from public,anon,authenticated;
+revoke all on function public.abastecimiento_set_estado(jsonb) from public,anon,authenticated;
+revoke all on function public.abastecimiento_update_raba03(text,jsonb) from public,anon,authenticated;
+grant execute on function public.abastecimiento_append_raba03(jsonb) to service_role;
+grant execute on function public.abastecimiento_delete_raba03_solicitud(text) to service_role;
+grant execute on function public.abastecimiento_delete_raba03_solicitud(text,text) to service_role;
+grant execute on function public.abastecimiento_delete_remito(text,text) to service_role;
+grant execute on function public.abastecimiento_save_remito(jsonb) to service_role;
+grant execute on function public.abastecimiento_set_estado(jsonb) to service_role;
+grant execute on function public.abastecimiento_update_raba03(text,jsonb) to service_role;
