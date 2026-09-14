@@ -6,7 +6,7 @@ import {abastecimientoFifoDashboardParityVitePlugin} from '../scripts/abastecimi
 
 const root=process.cwd();
 
-test('Abastecimiento dashboard/export/save use FIFO allocations from _matchedRemitos',()=>{
+test('Abastecimiento dashboard/export/save use FIFO allocations and unmatched ignores rejected requests',()=>{
   const source=fs.readFileSync(path.join(root,'src/modules/abastecimiento/AbastecimientoModule.jsx'),'utf8');
   const plugin=abastecimientoFifoDashboardParityVitePlugin();
   const result=plugin.transform(source,path.join(root,'src/modules/abastecimiento/AbastecimientoModule.jsx'));
@@ -21,5 +21,7 @@ test('Abastecimiento dashboard/export/save use FIFO allocations from _matchedRem
   const save=code.match(/const guardarDatosRABA03=useCallback\(async\(\)=>\{[\s\S]*?\},\[rows,toNumber,loadRaba03\]\);/)?.[0]||'';
   assert.match(save,/_matchedRemitos/);
   assert.doesNotMatch(save,/remitosByCode/);
+  assert.match(code,/solicitudesValidas=\(rows\|\|\[\]\)\.filter\(row=>!rejectedSolicitudes\?\.\[buildSolicitudKey\(row\)\]\)/);
   assert.match(code,/allocateRemitosToRequests\(base,remitos\)\.unmatched/);
+  assert.doesNotMatch(code,/buildEnviosSinSolicitudRows\s*\(\s*\{/);
 });
