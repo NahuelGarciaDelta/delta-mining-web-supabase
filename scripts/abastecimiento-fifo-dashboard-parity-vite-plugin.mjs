@@ -73,7 +73,7 @@ const SAVE=`  const guardarDatosRABA03=useCallback(async()=>{
       setError(null);
       const json=await updateAbastecimientoRaba03("cant_enviada",payloadRows);
       if(!json?.ok)throw new Error("No se pudieron guardar los datos en RABA03 de Supabase.");
-      setSuccessAlert({message:`${Number(json.updatedRows||0)} filas guardadas en RABA03 base`});
+      setSuccessAlert({message:String(Number(json.updatedRows||0))+" filas guardadas en RABA03 base"});
       await loadRaba03();
     }catch(err){
       const msg=err?.message||String(err);
