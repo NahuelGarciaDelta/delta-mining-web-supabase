@@ -1,51 +1,23 @@
 import {requireSupabase} from "./supabaseClient.js";
 import {clearDatasetCache} from "./appCache.js";
+import {getAuthContext} from "./authSession.js";
 
 let snapshotPromise=null;
 let snapshotCache=null;
 let snapshotAt=0;
 const SNAPSHOT_TTL_MS=5000;
 const RABA03_LOCAL_CACHE_KEY="abastecimiento_raba03_rows_v1";
-const RABA03_SHEET_API_URL=String(
-  (typeof import.meta!=="undefined"&&import.meta.env?.VITE_RABA03_APPS_SCRIPT_URL)||
-  "https://script.google.com/macros/s/AKfycbxU-ihsxXTNn2wa5EO1OkSM5FjJ43MwxSx8dY0RjbnJRFBKF0BiNNq7QsuohWxmmeOhog/exec"
-).trim();
-const actor=()=>String(sessionStorage.getItem("dm_user")||"APP").trim().toLowerCase()||"APP";
 
-function sheetUrl_(action,params={}){
-  const url=new URL(RABA03_SHEET_API_URL);
-  url.searchParams.set("action",action);
-  url.searchParams.set("_t",String(Date.now()));
-  Object.entries(params||{}).forEach(([key,value])=>{
-    if(value!==undefined&&value!==null&&value!=="")url.searchParams.set(key,String(value));
-  });
-  return url.toString();
-}
+const authToken_=()=>{
+  const token=String(getAuthContext()?.authToken||"").trim();
+  if(!token)throw new Error("La sesión no es válida. Volvé a iniciar sesión.");
+  return token;
+};
 
-async function parseSheetResponse_(response,label){
-  const text=await response.text();
-  let json;
-  try{json=JSON.parse(text);}catch(_){throw new Error(`${label}: Google Apps Script devolvió una respuesta no JSON.`);}
-  if(!response.ok||!json?.ok)throw new Error(json?.error?.message||`${label}: no se pudo completar la operación en Google Sheet.`);
-  return json;
-}
-
-async function readRaba03FromGoogleSheet_(){
-  const response=await fetch(sheetUrl_("raba03",{limit:"all",force:"1",compact:"0"}),{
-    method:"GET",cache:"no-store",redirect:"follow"
-  });
-  const json=await parseSheetResponse_(response,"RABA03");
-  const rows=Array.isArray(json.data)?json.data:(Array.isArray(json?.sources?.raba03?.data)?json.sources.raba03.data:[]);
-  return rows;
-}
-
-async function postRaba03ToGoogleSheet_(payload){
-  const response=await fetch(RABA03_SHEET_API_URL,{
-    method:"POST",cache:"no-store",redirect:"follow",
-    headers:{"Content-Type":"application/x-www-form-urlencoded;charset=UTF-8"},
-    body:new URLSearchParams({payload:JSON.stringify(payload||{})}).toString()
-  });
-  return parseSheetResponse_(response,"RABA03");
+async function rpc_(name,args,label){
+  const {data,error}=await requireSupabase().rpc(name,args||{});
+  if(error)throw new Error(`${label||name}: ${error.message}`);
+  return data||{ok:true};
 }
 
 export async function getAbastecimientoSnapshot({force=false}={}){
@@ -53,83 +25,81 @@ export async function getAbastecimientoSnapshot({force=false}={}){
   if(!force&&snapshotCache&&now-snapshotAt<SNAPSHOT_TTL_MS)return snapshotCache;
   if(snapshotPromise&&!force)return snapshotPromise;
   snapshotPromise=(async()=>{
-    // Google Sheet es la fuente de verdad de RABA03. Supabase conserva remitos y
-    // estados rápidos, pero nunca puede inventar ni retener una solicitud que no
-    // exista en "Seguimiento Compra".
-    const [sheetRows,supabaseResult]=await Promise.all([
-      readRaba03FromGoogleSheet_(),
-      requireSupabase().rpc("abastecimiento_snapshot",{})
-    ]);
-    if(supabaseResult.error)throw new Error(`Supabase Abastecimiento: ${supabaseResult.error.message}`);
-    const supabase=supabaseResult.data||{ok:true,remitos:[],estados:[]};
-    const value={
-      ...supabase,
-      ok:true,
-      raba03:sheetRows,
-      raba03Source:"google-sheet-authoritative"
-    };
-    snapshotCache=value;
+    const value=await rpc_("abastecimiento_snapshot",{},"Supabase Abastecimiento");
+    const normalized={...value,ok:true,raba03Source:"supabase"};
+    snapshotCache=normalized;
     snapshotAt=Date.now();
-    // Borra cualquier copia local antigua que haya podido contener filas fantasma.
     clearDatasetCache(RABA03_LOCAL_CACHE_KEY).catch(()=>{});
-    return value;
+    return normalized;
   })();
   try{return await snapshotPromise;}finally{snapshotPromise=null;}
 }
 
-export function invalidateAbastecimientoSnapshot(){snapshotCache=null;snapshotAt=0;}
+export function invalidateAbastecimientoSnapshot(){
+  snapshotCache=null;
+  snapshotAt=0;
+}
 
 export async function saveAbastecimientoRemito(remito){
-  const {data,error}=await requireSupabase().rpc("abastecimiento_save_remito",{p_remito:remito||{}});
-  if(error)throw new Error(`No se pudo guardar el remito en Supabase: ${error.message}`);
-  invalidateAbastecimientoSnapshot();return data||{ok:true};
-}
-export async function deleteAbastecimientoRemito(id){
-  const {data,error}=await requireSupabase().rpc("abastecimiento_delete_remito",{p_id:String(id||""),p_actor:actor()});
-  if(error)throw new Error(`No se pudo eliminar el remito en Supabase: ${error.message}`);
-  invalidateAbastecimientoSnapshot();return data||{ok:true};
-}
-export async function setAbastecimientoEstado(payload){
-  const {data,error}=await requireSupabase().rpc("abastecimiento_set_estado",{p_payload:payload||{}});
-  if(error)throw new Error(`No se pudo actualizar el estado en Supabase: ${error.message}`);
-  invalidateAbastecimientoSnapshot();return data||{ok:true};
+  const data=await rpc_("abastecimiento_save_remito_v2",{
+    p_remito:remito||{},
+    p_auth_token:authToken_()
+  },"No se pudo guardar el remito en Supabase");
+  invalidateAbastecimientoSnapshot();
+  return data;
 }
 
-// RABA03 es Sheet-first: la escritura sólo se considera exitosa después de que
-// Apps Script confirmó que la fila quedó persistida en la planilla de Google.
+export async function deleteAbastecimientoRemito(id){
+  const data=await rpc_("abastecimiento_delete_remito_v2",{
+    p_id:String(id||""),
+    p_auth_token:authToken_()
+  },"No se pudo eliminar el remito en Supabase");
+  invalidateAbastecimientoSnapshot();
+  return data;
+}
+
+export async function setAbastecimientoEstado(payload){
+  const data=await rpc_("abastecimiento_set_estado_v2",{
+    p_payload:payload||{},
+    p_auth_token:authToken_()
+  },"No se pudo actualizar el estado en Supabase");
+  invalidateAbastecimientoSnapshot();
+  return data;
+}
+
 export async function appendAbastecimientoRaba03(rows){
-  const json=await postRaba03ToGoogleSheet_({
-    action:"add_raba03_rows_append_only",
-    rows:Array.isArray(rows)?rows:[]
-  });
+  const data=await rpc_("abastecimiento_append_raba03_v2",{
+    p_rows:Array.isArray(rows)?rows:[],
+    p_auth_token:authToken_()
+  },"No se pudieron agregar solicitudes RABA03 en Supabase");
   invalidateAbastecimientoSnapshot();
   clearDatasetCache(RABA03_LOCAL_CACHE_KEY).catch(()=>{});
-  return json||{ok:true,insertedRows:0};
+  return data;
 }
 
 export async function updateAbastecimientoRaba03(action,rows){
   const normalized=String(action||"").trim().toLowerCase();
-  const appScriptAction=normalized==="cant_enviada"
-    ?"save_raba03_cant_enviada"
-    :normalized==="codigos"
-      ?"save_raba03_codigos"
-      :"";
-  if(!appScriptAction)throw new Error(`Acción RABA03 no soportada: ${action}`);
-  const json=await postRaba03ToGoogleSheet_({
-    action:appScriptAction,
-    rows:Array.isArray(rows)?rows:[]
-  });
+  if(!["cant_enviada","codigos"].includes(normalized)){
+    throw new Error(`Acción RABA03 no soportada: ${action}`);
+  }
+  const data=await rpc_("abastecimiento_update_raba03_v2",{
+    p_action:normalized,
+    p_rows:Array.isArray(rows)?rows:[],
+    p_auth_token:authToken_()
+  },"No se pudo actualizar RABA03 en Supabase");
   invalidateAbastecimientoSnapshot();
   clearDatasetCache(RABA03_LOCAL_CACHE_KEY).catch(()=>{});
-  return json||{ok:true,updatedRows:0};
+  return data;
 }
 
 export async function deleteAbastecimientoRaba03Solicitud(numeroSolicitud){
-  const json=await postRaba03ToGoogleSheet_({
-    action:"delete_raba03_solicitud_numero",
-    numeroSolicitud:String(numeroSolicitud||"").trim()
-  });
+  const numero=String(numeroSolicitud||"").trim();
+  if(!numero)throw new Error("Indicá el N° de solicitud a eliminar.");
+  const data=await rpc_("abastecimiento_delete_raba03_solicitud_v2",{
+    p_numero_solicitud:numero,
+    p_auth_token:authToken_()
+  },"No se pudo eliminar la solicitud RABA03 en Supabase");
   invalidateAbastecimientoSnapshot();
   clearDatasetCache(RABA03_LOCAL_CACHE_KEY).catch(()=>{});
-  return json||{ok:true,deletedRows:0};
+  return data;
 }
