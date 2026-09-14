@@ -12,31 +12,12 @@ const RABA03_SHEET_API_URL=String(
 ).trim();
 const actor=()=>String(sessionStorage.getItem("dm_user")||"APP").trim().toLowerCase()||"APP";
 
-function sheetUrl_(action,params={}){
-  const url=new URL(RABA03_SHEET_API_URL);
-  url.searchParams.set("action",action);
-  url.searchParams.set("_t",String(Date.now()));
-  Object.entries(params||{}).forEach(([key,value])=>{
-    if(value!==undefined&&value!==null&&value!=="")url.searchParams.set(key,String(value));
-  });
-  return url.toString();
-}
-
 async function parseSheetResponse_(response,label){
   const text=await response.text();
   let json;
   try{json=JSON.parse(text);}catch(_){throw new Error(`${label}: Google Apps Script devolvió una respuesta no JSON.`);}
   if(!response.ok||!json?.ok)throw new Error(json?.error?.message||`${label}: no se pudo completar la operación en Google Sheet.`);
   return json;
-}
-
-async function readRaba03FromGoogleSheet_(){
-  const response=await fetch(sheetUrl_("raba03",{limit:"all",force:"1",compact:"0"}),{
-    method:"GET",cache:"no-store",redirect:"follow"
-  });
-  const json=await parseSheetResponse_(response,"RABA03");
-  const rows=Array.isArray(json.data)?json.data:(Array.isArray(json?.sources?.raba03?.data)?json.sources.raba03.data:[]);
-  return rows;
 }
 
 async function postRaba03ToGoogleSheet_(payload){
@@ -53,24 +34,15 @@ export async function getAbastecimientoSnapshot({force=false}={}){
   if(!force&&snapshotCache&&now-snapshotAt<SNAPSHOT_TTL_MS)return snapshotCache;
   if(snapshotPromise&&!force)return snapshotPromise;
   snapshotPromise=(async()=>{
-    // Google Sheet es la fuente de verdad de RABA03. Supabase conserva remitos y
-    // estados rápidos, pero nunca puede inventar ni retener una solicitud que no
-    // exista en "Seguimiento Compra".
-    const [sheetRows,supabaseResult]=await Promise.all([
-      readRaba03FromGoogleSheet_(),
-      requireSupabase().rpc("abastecimiento_snapshot",{})
-    ]);
-    if(supabaseResult.error)throw new Error(`Supabase Abastecimiento: ${supabaseResult.error.message}`);
-    const supabase=supabaseResult.data||{ok:true,remitos:[],estados:[]};
-    const value={
-      ...supabase,
-      ok:true,
-      raba03:sheetRows,
-      raba03Source:"google-sheet-authoritative"
-    };
+    // La planilla sigue siendo el origen que sincroniza RABA03, pero la app lee
+    // el espejo completo desde Supabase. El endpoint de Apps Script puede paginar
+    // a 1000 filas; usar abastecimiento_snapshot evita truncar solicitudes cuando
+    // el dataset supera ese límite y mantiene los contadores iguales a OPS.
+    const {data,error}=await requireSupabase().rpc("abastecimiento_snapshot",{});
+    if(error)throw new Error(`Supabase Abastecimiento: ${error.message}`);
+    const value={...(data||{}),ok:true,raba03Source:"supabase"};
     snapshotCache=value;
     snapshotAt=Date.now();
-    // Borra cualquier copia local antigua que haya podido contener filas fantasma.
     clearDatasetCache(RABA03_LOCAL_CACHE_KEY).catch(()=>{});
     return value;
   })();
@@ -95,8 +67,8 @@ export async function setAbastecimientoEstado(payload){
   invalidateAbastecimientoSnapshot();return data||{ok:true};
 }
 
-// RABA03 es Sheet-first: la escritura sólo se considera exitosa después de que
-// Apps Script confirmó que la fila quedó persistida en la planilla de Google.
+// Las escrituras RABA03 continúan confirmándose contra Sheets en esta rama mínima;
+// el Apps Script instalado replica después el estado hacia Supabase.
 export async function appendAbastecimientoRaba03(rows){
   const json=await postRaba03ToGoogleSheet_({
     action:"add_raba03_rows_append_only",
