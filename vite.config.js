@@ -14,9 +14,10 @@ import { equipmentProfileLocationVehicleLabelVitePlugin } from './scripts/equipm
 import { equipmentProfileVehicleArrowsVitePlugin } from './scripts/equipment-profile-vehicle-arrows-vite-plugin.mjs'
 import { abastecimientoFifoDashboardParityVitePlugin } from './scripts/abastecimiento-fifo-dashboard-parity-vite-plugin.mjs'
 import { secureUserAppearanceVitePlugin } from './scripts/secure-user-appearance-vite-plugin.mjs'
+import { rop02Rop05PositiveHoursVitePlugin } from './scripts/rop02-rop05-positive-hours-vite-plugin.mjs'
 
 export default defineConfig({
-  plugins: [intelligentRefreshVitePlugin(), abastecimientoFifoDashboardParityVitePlugin(), secureUserAppearanceVitePlugin(), vehicleKmMaintenanceVitePlugin(), pmVehicleScopeVitePlugin(), pmVehicleDisplayVitePlugin(), equipmentProfileCodeHistoryVitePlugin(), equipmentProfileAliasProjectMultiselectVitePlugin(), equipmentProfileDeduplicateLastRop02VitePlugin(), equipmentProfileLocationVehicleLabelVitePlugin(), equipmentProfileVehicleArrowsVitePlugin(), tallerCentralNavigationVitePlugin(), atrasoIchcFixesVitePlugin(), progressiveRowsVitePlugin(), react()],
+  plugins: [intelligentRefreshVitePlugin(), abastecimientoFifoDashboardParityVitePlugin(), secureUserAppearanceVitePlugin(), rop02Rop05PositiveHoursVitePlugin(), vehicleKmMaintenanceVitePlugin(), pmVehicleScopeVitePlugin(), pmVehicleDisplayVitePlugin(), equipmentProfileCodeHistoryVitePlugin(), equipmentProfileAliasProjectMultiselectVitePlugin(), equipmentProfileDeduplicateLastRop02VitePlugin(), equipmentProfileLocationVehicleLabelVitePlugin(), equipmentProfileVehicleArrowsVitePlugin(), tallerCentralNavigationVitePlugin(), atrasoIchcFixesVitePlugin(), progressiveRowsVitePlugin(), react()],
   server: {
     host: '0.0.0.0'
   },
