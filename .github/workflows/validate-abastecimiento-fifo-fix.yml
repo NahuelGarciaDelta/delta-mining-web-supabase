@@ -1,0 +1,19 @@
+name: Validate Abastecimiento FIFO fix
+
+on:
+  push:
+    branches: [fix/abastecimiento-items-salida-fifo]
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+      - run: npm ci
+      - run: node --test tests/abastecimiento-fifo-dashboard-parity.test.mjs tests/abastecimiento-complete-snapshot.test.mjs
+      - run: npm run build
+      - run: git diff --check
