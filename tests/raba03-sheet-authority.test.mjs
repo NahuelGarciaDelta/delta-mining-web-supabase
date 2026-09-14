@@ -18,7 +18,8 @@ test("RABA03 escribe primero en RPC v2 de Supabase con sesión",()=>{
   assert.match(source,/abastecimiento_delete_raba03_solicitud_v2/);
   assert.match(source,/p_auth_token:authToken_\(\)/);
   assert.match(sql,/app_require_session_/);
-  assert.match(sql,/app_sync_outbox/);
+  assert.match(sql,/return public\.abastecimiento_append_raba03\(p_rows\)/);
+  assert.match(sql,/return public\.abastecimiento_update_raba03\(p_action,p_rows\)/);
   assert.doesNotMatch(source,/action:"add_raba03_rows_append_only"|save_raba03_cant_enviada|save_raba03_codigos/);
 });
 
