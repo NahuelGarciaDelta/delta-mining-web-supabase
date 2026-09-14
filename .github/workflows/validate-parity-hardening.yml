@@ -1,0 +1,35 @@
+name: Validate parity hardening
+
+on:
+  push:
+    branches:
+      - codex/parity-hardening-20260914
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - name: Install
+        run: npm ci
+      - name: Tests
+        run: npm test
+      - name: Validate
+        run: npm run validate
+      - name: Audit parity
+        run: npm run audit:parity
+      - name: Build
+        run: npm run build
+      - name: Diff check
+        run: git diff --check
