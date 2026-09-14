@@ -7,10 +7,17 @@ const read=path=>fs.readFileSync(path,"utf8");
 
 test("Bienvenida filtra por proyecto sin forzar TODOS en estado global",()=>{
   const source=read("src/modules/home/ViewBienvenidaProjectFilter.jsx");
+  const bienvenida=read("src/modules/home/ViewBienvenida.jsx");
   assert.doesNotMatch(source,/__dmHomeSummary(?:ExternalFilter|Project)/);
   assert.match(source,/selectedSet\.has\(projectFromRow\(row\)\)/);
-  assert.match(source,/rop02All:filteredRop02/);
+  assert.match(source,/const summaryRop02=effectiveDay\?projectFilteredRop02\.filter/);
+  assert.match(source,/rop02All:projectFilteredRop02/);
+  assert.match(source,/summaryRop02,/);
+  assert.doesNotMatch(source,/rop02All:(?:filteredRop02|summaryRop02)/);
   assert.match(source,/rop05:filterRows\(props\.rop05\)/);
+  assert.match(bienvenida,/summaryDayFiltered&&Array\.isArray\(summaryRop02\)/);
+  assert.match(bienvenida,/<ExecutiveDashboard rop02All=\{rop02All\}/);
+  assert.doesNotMatch(bienvenida,/<ExecutiveDashboard rop02All=\{(?:summaryRop02|effectiveRop02)\}/);
 });
 
 test("Control por Equipo mantiene los saltos pendientes definidos y consistentes",()=>{

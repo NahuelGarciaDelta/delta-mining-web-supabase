@@ -93,8 +93,17 @@ export default function ViewBienvenidaProjectFilter(props){
   const filteredProps=React.useMemo(()=>{
     const filterRows=rows=>Array.isArray(rows)?(allSelected?rows:rows.filter(row=>selectedSet.has(projectFromRow(row)))):rows;
     const filteredRma=filterRows(props.rma15);
-    const filteredRop02=effectiveDay?projectFilteredRop02.filter(row=>dateFromRop02Row(row)===effectiveDay):projectFilteredRop02;
-    return {...props,rop02All:filteredRop02,rop05:filterRows(props.rop05),rma15:Array.isArray(filteredRma)&&filteredRma.length?filteredRma:[EMPTY_RMA_SENTINEL],summaryDayFiltered:Boolean(effectiveDay)};
+    const summaryRop02=effectiveDay?projectFilteredRop02.filter(row=>dateFromRop02Row(row)===effectiveDay):projectFilteredRop02;
+    return {
+      ...props,
+      // El Dashboard embebido necesita el histórico completo del alcance de
+      // proyectos seleccionado. El día elegido pertenece sólo al resumen de Inicio.
+      rop02All:projectFilteredRop02,
+      summaryRop02,
+      rop05:filterRows(props.rop05),
+      rma15:Array.isArray(filteredRma)&&filteredRma.length?filteredRma:[EMPTY_RMA_SENTINEL],
+      summaryDayFiltered:Boolean(effectiveDay),
+    };
   },[props,allSelected,selectedSet,projectFilteredRop02,effectiveDay]);
 
   const toggleProject=value=>{

@@ -32,7 +32,7 @@ let bienvenidaStockCache=null;
 
 function MiniIcon({name,color="#fff",bg="rgba(255,255,255,.08)"}){return <span style={{width:44,height:44,borderRadius:14,display:"inline-flex",alignItems:"center",justifyContent:"center",background:bg,flex:"0 0 auto"}}><Icon name={name} size={23} color={color}/></span>;}
 
-export default function ViewBienvenida({onOpenModule,onNavigate,rawSources={},rma15=[],rop05=[],listaEquipos=[],rop02All=[],usdRate=1,nombreUsuario="Usuario",areaUsuario="OFICINA TÉCNICA",onOpenProfile,onLogout,esAdministrativo=false,summaryDayFiltered=false}){
+export default function ViewBienvenida({onOpenModule,onNavigate,rawSources={},rma15=[],rop05=[],listaEquipos=[],rop02All=[],summaryRop02=[],usdRate=1,nombreUsuario="Usuario",areaUsuario="OFICINA TÉCNICA",onOpenProfile,onLogout,esAdministrativo=false,summaryDayFiltered=false}){
   const [now,setNow]=useState(()=>new Date());
   const {data:weatherData}=useBatideroWeather();
   const [sharedStockRows,setSharedStockRows]=useState(()=>bienvenidaStockCache||[]);
@@ -58,7 +58,9 @@ export default function ViewBienvenida({onOpenModule,onNavigate,rawSources={},rm
     return()=>{alive=false;};
   },[]);
   useEffect(()=>{let alive=true;getRma15OpenOtSummary({}).then(response=>{if(alive&&Array.isArray(response?.data))setOpenOtSummary(response.data);}).catch(()=>getRma15({limit:"all",sortBy:"fecha",sortDirection:"asc"}).then(response=>{if(alive)setFallbackRma15(response.data||[]);}).catch(()=>{}));return()=>{alive=false;};},[]);
-  const effectiveRop02=summaryDayFiltered?(Array.isArray(rop02All)?rop02All:[]):(Array.isArray(snapshotRop02)?snapshotRop02:(Array.isArray(rop02All)?rop02All:[]));
+  const effectiveRop02=summaryDayFiltered&&Array.isArray(summaryRop02)
+    ?summaryRop02
+    :(Array.isArray(snapshotRop02)?snapshotRop02:(Array.isArray(rop02All)?rop02All:[]));
   const {admitidos:admitidosAtraso,loaded:movimientosLoaded,error:movimientosError}=useEquipmentMovements(effectiveRop02,["bienvenida"]);
   const [activeSummaryKey,setActiveSummaryKey]=useState(null);
   const summaryRef=useRef(null);
