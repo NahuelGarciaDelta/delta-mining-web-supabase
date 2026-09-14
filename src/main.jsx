@@ -5,6 +5,10 @@ import {C} from "./components/ui/index.jsx";
 import { installSupabaseReadBridge } from "./services/supabaseReadBridge.js";
 import {applyAppearance,readLastAppearance} from "./services/userAppearance.js";
 import {installAdministrativeTableExports} from "./services/administrativeTableExports.js";
+import {installGlobalTableColumnFilters} from "./services/globalTableColumnFilters.js";
+import {installMechanicRoleGuard} from "./services/mechanicRoleGuard.js";
+import {installUserHeaderDisplay} from "./services/userHeaderDisplay.js";
+import {installWelcomeRefreshButton} from "./services/welcomeRefreshButton.js";
 import {preloadHistoricalDatasets} from "./services/globalPreload.js";
 import {DATA_REFRESH_INTERVAL_MS,dispatchDataRefreshPolicyTick,installLegacyRefreshIntervalPolicy} from "./services/dataRefreshPolicy.js";
 
@@ -14,6 +18,10 @@ if(typeof window!=="undefined"){
   applyAppearance(readLastAppearance(),C);
   window.addEventListener("dm-appearance-saved",event=>applyAppearance(event?.detail||readLastAppearance(),C));
   installAdministrativeTableExports();
+  installGlobalTableColumnFilters();
+  installMechanicRoleGuard();
+  installUserHeaderDisplay();
+  installWelcomeRefreshButton();
 }
 
 createRoot(document.getElementById("root")).render(<React.StrictMode><App /></React.StrictMode>);
