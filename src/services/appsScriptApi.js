@@ -1,5 +1,6 @@
 import {isSupabaseConfigured,requireSupabase} from "./supabaseClient.js";
 import {getOperationalSource} from "../data/operationalRepository.js";
+import {getAuthContext} from "./authSession.js";
 
 const TYPED_SUPABASE_SOURCES=new Set([
   "rop02_fs","rop02_jm","rop02_filosur","rop02_zorro",
@@ -20,6 +21,12 @@ const SPECIAL_CACHE_ACTIONS=Object.freeze({
   get_equipment_movements:"equipment_movements_all",
   get_active_equipment_movements:"equipment_movements_active",
 });
+
+const authToken_=()=>{
+  const token=String(getAuthContext()?.authToken||"").trim();
+  if(!token)throw new Error("La sesión no es válida. Volvé a iniciar sesión.");
+  return token;
+};
 
 async function readGenericSourceFromSupabase_(source){
   if(!GENERIC_SUPABASE_SOURCES.has(source)||!isSupabaseConfigured)return null;
@@ -105,11 +112,11 @@ export async function authenticateUser(_url,email,password){
   return data||{ok:false,error:{message:"Respuesta de autenticación inválida."}};
 }
 
-export async function updateUserProfile(_url,{email,currentPassword="",newPassword="",nombre="",area=""}={}){
-  const {data,error}=await requireSupabase().rpc("app_update_user_profile",{
-    p_email:String(email||""),p_current_password:String(currentPassword||""),p_new_password:String(newPassword||""),p_nombre:String(nombre||""),p_area:String(area||"")
+export async function updateUserProfile(_url,{currentPassword="",newPassword="",nombre="",area=""}={}){
+  const {data,error}=await requireSupabase().rpc("app_update_user_profile_v2",{
+    p_current_password:String(currentPassword||""),p_new_password:String(newPassword||""),p_nombre:String(nombre||""),p_area:String(area||""),p_auth_token:authToken_()
   });
-  if(error)throw new Error(`Supabase app_update_user_profile: ${error.message}`);
+  if(error)throw new Error(`Supabase app_update_user_profile_v2: ${error.message}`);
   return data||{ok:false,error:{message:"Respuesta de perfil inválida."}};
 }
 
