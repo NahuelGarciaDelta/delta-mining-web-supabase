@@ -6,6 +6,7 @@ import { collectProjects, projectFromRow, projectLabel } from "../../shared/proj
 const STORAGE_KEY="dm_home_summary_project_v3";
 const LEGACY_PROJECTS=new Set(["JOSE MARIA","FILO DEL SOL","FILO SUR","EL ZORRO"]);
 const EMPTY_RMA_SENTINEL={__dmHomeEmptyProject:true};
+
 const normalizeDateKey=value=>{
   if(value instanceof Date&&!Number.isNaN(value.getTime()))return `${value.getFullYear()}-${String(value.getMonth()+1).padStart(2,"0")}-${String(value.getDate()).padStart(2,"0")}`;
   const raw=String(value??"").trim();
@@ -17,6 +18,7 @@ const normalizeDateKey=value=>{
   const parsed=new Date(raw);
   return Number.isNaN(parsed.getTime())?"":`${parsed.getFullYear()}-${String(parsed.getMonth()+1).padStart(2,"0")}-${String(parsed.getDate()).padStart(2,"0")}`;
 };
+
 const dateFromRop02Row=row=>{
   if(!row||typeof row!=="object")return "";
   const direct=row.fecha??row.Fecha??row.FECHA??row.ultimaFecha??row.ULTIMA_FECHA;
@@ -24,6 +26,7 @@ const dateFromRop02Row=row=>{
   const key=Object.keys(row).find(k=>String(k).toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g,"").includes("fecha"));
   return key?normalizeDateKey(row[key]):"";
 };
+
 const formatDayLabel=iso=>/^\d{4}-\d{2}-\d{2}$/.test(String(iso||""))?`${iso.slice(8,10)}/${iso.slice(5,7)}/${iso.slice(0,4)}`:"Sin fecha";
 
 function readInitialSelection(){
@@ -52,7 +55,9 @@ export default function ViewBienvenidaProjectFilter(props){
   const [selectedDay,setSelectedDay]=React.useState("");
   const [portalHost,setPortalHost]=React.useState(null);
   const [open,setOpen]=React.useState(false);
+  const [dashboardHost,setDashboardHost]=React.useState(null);
   const controlRef=React.useRef(null);
+  const dashboardVisible=Boolean(dashboardHost);
 
   const projectValues=React.useMemo(()=>collectProjects(props.rop02All,props.rop05,props.rma15),[props.rop02All,props.rop05,props.rma15]);
   const projectItems=React.useMemo(()=>[{value:"TODOS",label:"Todos"},...projectValues.map(value=>({value,label:projectLabel(value)}))],[projectValues]);
@@ -71,50 +76,83 @@ export default function ViewBienvenidaProjectFilter(props){
   const availableDays=React.useMemo(()=>[...new Set(projectFilteredRop02.map(dateFromRop02Row).filter(Boolean))].sort((a,b)=>b.localeCompare(a)),[projectFilteredRop02]);
   const effectiveDay=selectedDay&&availableDays.includes(selectedDay)?selectedDay:(availableDays[0]||"");
 
+  if(typeof window!=="undefined"){
+    window.__dmHomeSummaryExternalFilter=true;
+    window.__dmHomeSummaryProject="TODOS";
+  }
+
   React.useEffect(()=>{try{window.localStorage.setItem(STORAGE_KEY,JSON.stringify(selection===null?"TODOS":selection));}catch(_){}},[selection]);
+  React.useEffect(()=>()=>{if(typeof window!=="undefined"){window.__dmHomeSummaryExternalFilter=false;window.__dmHomeSummaryProject="TODOS";}},[]);
+
   React.useEffect(()=>{
-    let frame=0;
-    const findHost=()=>{
+    const syncPortalHost=()=>{
       const host=document.querySelector(".dm-home-summary > div:first-child");
-      if(host){setPortalHost(host);return;}
-      frame=window.requestAnimationFrame(findHost);
+      setPortalHost(current=>current===host?current:(host||null));
     };
-    findHost();
-    return()=>window.cancelAnimationFrame(frame);
+    syncPortalHost();
+    const observer=new MutationObserver(syncPortalHost);
+    observer.observe(document.body,{childList:true,subtree:true});
+    return()=>observer.disconnect();
   },[]);
+
   React.useEffect(()=>{
     if(!open)return;
     const close=event=>{if(controlRef.current&&!controlRef.current.contains(event.target))setOpen(false);};
     const onKey=event=>{if(event.key==="Escape")setOpen(false);};
-    document.addEventListener("mousedown",close);document.addEventListener("keydown",onKey);
+    document.addEventListener("mousedown",close);
+    document.addEventListener("keydown",onKey);
     return()=>{document.removeEventListener("mousedown",close);document.removeEventListener("keydown",onKey);};
   },[open]);
+
+  React.useEffect(()=>{
+    const syncDashboardHost=()=>{
+      const host=document.querySelector(".dm-home-dashboard-shell");
+      setDashboardHost(current=>current===host?current:(host||null));
+    };
+    syncDashboardHost();
+    const observer=new MutationObserver(syncDashboardHost);
+    observer.observe(document.body,{childList:true,subtree:true});
+    return()=>observer.disconnect();
+  },[]);
 
   const filteredProps=React.useMemo(()=>{
     const filterRows=rows=>Array.isArray(rows)?(allSelected?rows:rows.filter(row=>selectedSet.has(projectFromRow(row)))):rows;
     const filteredRma=filterRows(props.rma15);
-    const summaryRop02=effectiveDay?projectFilteredRop02.filter(row=>dateFromRop02Row(row)===effectiveDay):projectFilteredRop02;
+    const dailySummaryRop02=effectiveDay?projectFilteredRop02.filter(row=>dateFromRop02Row(row)===effectiveDay):projectFilteredRop02;
+
+    if(dashboardVisible){
+      return {
+        ...props,
+        rop02All:Array.isArray(props.rop02All)?props.rop02All:[],
+        rop05:Array.isArray(props.rop05)?props.rop05:[],
+        rma15:Array.isArray(props.rma15)?props.rma15:[],
+        summaryDayFiltered:false,
+      };
+    }
+
     return {
       ...props,
-      // El Dashboard embebido necesita el histórico completo del alcance de
-      // proyectos seleccionado. El día elegido pertenece sólo al resumen de Inicio.
-      rop02All:projectFilteredRop02,
-      summaryRop02,
+      rop02All:dailySummaryRop02,
       rop05:filterRows(props.rop05),
       rma15:Array.isArray(filteredRma)&&filteredRma.length?filteredRma:[EMPTY_RMA_SENTINEL],
       summaryDayFiltered:Boolean(effectiveDay),
     };
-  },[props,allSelected,selectedSet,projectFilteredRop02,effectiveDay]);
+  },[props,allSelected,selectedSet,projectFilteredRop02,effectiveDay,dashboardVisible]);
 
   const toggleProject=value=>{
     setSelectedDay("");
     if(value==="TODOS"){setSelection(null);return;}
     setSelection(current=>{
       const base=current===null?[...projectValues]:[...current];
-      if(base.includes(value)){const next=base.filter(item=>item!==value);return next.length?next:base;}
-      const next=[...base,value];return next.length>=projectValues.length?null:next;
+      if(base.includes(value)){
+        const next=base.filter(item=>item!==value);
+        return next.length?next:base;
+      }
+      const next=[...base,value];
+      return next.length>=projectValues.length?null:next;
     });
   };
+
   const summaryLabel=allSelected?"Todos":projectItems.filter(item=>item.value!=="TODOS"&&selectedSet.has(item.value)).map(item=>item.label).join(" + ");
 
   const control=portalHost?createPortal(
@@ -127,7 +165,13 @@ export default function ViewBienvenidaProjectFilter(props){
         {availableDays.map(day=><option key={day} value={day}>{formatDayLabel(day)}</option>)}
       </select>
       {open&&<div style={{position:"absolute",right:0,top:34,zIndex:80,width:178,maxWidth:"min(178px, 80vw)",maxHeight:300,overflowY:"auto",padding:6,boxSizing:"border-box",borderRadius:9,border:"1px solid rgba(255,255,255,.14)",background:"rgba(5,18,29,.98)",boxShadow:"0 16px 36px rgba(0,0,0,.38)",backdropFilter:"blur(14px)",WebkitBackdropFilter:"blur(14px)"}}>
-        {projectItems.map(item=>{const checked=item.value==="TODOS"?allSelected:selectedSet.has(item.value);return <label key={item.value} style={{display:"flex",alignItems:"center",gap:8,padding:"7px 8px",borderRadius:6,cursor:"pointer",fontSize:10,fontWeight:800,color:"#e8edf1",background:checked?"rgba(255,255,255,.06)":"transparent"}}><input type="checkbox" checked={checked} onChange={()=>toggleProject(item.value)} style={{margin:0,accentColor:"#ef233c",cursor:"pointer"}}/><span>{item.label}</span></label>;})}
+        {projectItems.map(item=>{
+          const checked=item.value==="TODOS"?allSelected:selectedSet.has(item.value);
+          return <label key={item.value} style={{display:"flex",alignItems:"center",gap:8,padding:"7px 8px",borderRadius:6,cursor:"pointer",fontSize:10,fontWeight:800,color:"#e8edf1",background:checked?"rgba(255,255,255,.06)":"transparent"}}>
+            <input type="checkbox" checked={checked} onChange={()=>toggleProject(item.value)} style={{margin:0,accentColor:"#ef233c",cursor:"pointer"}}/>
+            <span>{item.label}</span>
+          </label>;
+        })}
       </div>}
     </div>,portalHost):null;
 
