@@ -488,7 +488,13 @@ export default function App(){
     keys.forEach(key=>hydratedCacheKeysRef.current.add(key));
     const recordMap=await readCachedSourceRecords(keys).catch(()=>({}));
     const records=keys.map(key=>[key,recordMap[key]||null]);
-    const valid=records.filter(([,rec])=>rec?.value?.ok&&Array.isArray(rec.value.data));
+    // Un snapshot ROP02 incompleto falsea todo el Dashboard: por ejemplo,
+    // muestra sólo el mes recién sincronizado y una evolución con enero–agosto
+    // en cero. Es preferible esperar la lectura paginada de Supabase a pintar
+    // una serie histórica parcial persistida por una versión anterior.
+    const valid=records.filter(([key,rec])=>rec?.value?.ok&&Array.isArray(rec.value.data)&&(
+      !SUPABASE_OPERATIONAL_KEYS.has(key)||!key.startsWith("rop02_")||rec.value?.meta?.complete===true
+    ));
     if(!valid.length)return recordMap;
 
     startTransition(()=>{

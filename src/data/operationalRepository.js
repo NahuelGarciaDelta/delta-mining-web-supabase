@@ -131,21 +131,23 @@ const ROP02_SOURCE_KEY_PREFIX={
 async function getRop02Source_(sourceDataset){
   const sourceKeyPrefix=ROP02_SOURCE_KEY_PREFIX[sourceDataset];
   if(!sourceKeyPrefix)throw new Error(`Fuente ROP02 no soportada: ${sourceDataset}`);
-  const all=[];
+  const all=[];let total=null;
   for(let offset=0;;offset+=1000){
-    const {data,error}=await requireSupabase().from(ROP02_FRONTEND_TABLE)
-      .select("fecha,interno,equipo,operador,supervisor_delta,supervisor_vial_cliente,turno_trabajo,numero_parte,proyecto,horometro_inicial,horometro_final,cantidad_horas,combustible,aceite,aceite_text,descripcion_trabajos,informacion_desgaste,observaciones,source_key,synced_at,estado")
+    const {data,error,count}=await requireSupabase().from(ROP02_FRONTEND_TABLE)
+      .select("fecha,interno,equipo,operador,supervisor_delta,supervisor_vial_cliente,turno_trabajo,numero_parte,proyecto,horometro_inicial,horometro_final,cantidad_horas,combustible,aceite,aceite_text,descripcion_trabajos,informacion_desgaste,observaciones,source_key,synced_at,estado",{count:"exact"})
       .like("source_key",`${sourceKeyPrefix}%`)
       .order("fecha",{ascending:true})
       .order("source_key",{ascending:true})
       .range(offset,offset+999);
     if(error)throw new Error(`Supabase ${ROP02_FRONTEND_TABLE} (${sourceDataset}): ${error.message}`);
+    if(total===null&&Number.isFinite(count))total=Number(count);
     all.push(...(data||[]));
-    if((data||[]).length<1000)break;
+    if((total!==null&&all.length>=total)||(data||[]).length<1000)break;
   }
+  if(total!==null&&all.length!==total)throw new Error(`Supabase ${ROP02_FRONTEND_TABLE} (${sourceDataset}): snapshot incompleto (${all.length}/${total})`);
   const rows=all.map(rop02Legacy);
   const latest=all.reduce((max,row)=>Math.max(max,new Date(row.synced_at||0).getTime()||0),0);
-  return{ok:true,data:rows,meta:{source:sourceDataset,rows:rows.length,returnedRows:rows.length,hasMore:false,serverVersion:latest||Date.now()},source:"supabase"};
+  return{ok:true,data:rows,meta:{source:sourceDataset,rows:rows.length,returnedRows:rows.length,total:total??rows.length,hasMore:false,complete:true,serverVersion:latest||Date.now()},source:"supabase"};
 }
 
 export const getOperationalSource=async key=>{

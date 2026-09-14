@@ -19,7 +19,15 @@ test("las cuatro fuentes ROP02 declaradas se resuelven desde Supabase",()=>{
   assert.match(repo,/ROP02_FRONTEND_TABLE="rop02_frontend"/);
   assert.match(repo,/\.from\(ROP02_FRONTEND_TABLE\)/);
   assert.match(repo,/\.like\("source_key",`\$\{sourceKeyPrefix\}%`\)/);
+  assert.match(repo,/snapshot incompleto/);
+  assert.match(repo,/complete:true/);
   assert.doesNotMatch(repo,/getRop02Source_[\s\S]*?\.from\("rop02"\)/);
+});
+
+test("Dashboard no rehidrata una instantánea ROP02 parcial",()=>{
+  const app=read("../src/App.jsx");
+  assert.match(app,/key\.startsWith\("rop02_"\).*meta\?\.complete===true/s);
+  assert.match(app,/serie histórica parcial persistida/);
 });
 
 test("las pantallas ROP02 no consultan query_dataset directamente",()=>{
