@@ -6,7 +6,7 @@ const source=fs.readFileSync(new URL("../src/services/abastecimientoSupabase.js"
 
 test("RABA03 reads from authoritative Google Sheet, not Supabase table",()=>{
   assert.match(source,/readRaba03FromGoogleSheet_/);
-  assert.match(source,/action\",\"raba03\"/);
+  assert.match(source,/sheetUrl_\("raba03"/);
   assert.match(source,/force:\"1\"/);
   assert.match(source,/raba03Source:\"google-sheet-authoritative\"/);
 });
