@@ -119,7 +119,7 @@ import {
   normSupervisorROP05,
   fmtARS,
   fmtUSD,
-  normalizeInsumoCode,
+  buildInsumosCatalog, normalizeInsumoCode,
   normalizeRMA15,
   normalizeROP05,
   esNoProductivo,
@@ -303,7 +303,18 @@ export default function App(){
   // Estados persistentes de filtros por pestaña
   const[dashSt,setDashSt]=useState(()=>savedOr("dashSt",{proyecto:"todos",modeD:"todo",fechaD:"",fechaDD:"",fechaDH:""}));
   const[rma15,setRma15]=useState([]);
-  const[stMant,setStMant]=useState(()=>savedOr("stMant",{modo:"dia",proyecto:"todos",tipoMant:"todos",maquina:"todas",fechaD:"",fechaH:"",fechaDia:"",filtroCosto:"total",insumoFiltro:"todos",verGastosExcesivos:false}));
+  const[stMant,setStMant]=useState(()=>{
+    const state=savedOr("stMant",{modo:"dia",proyecto:"todos",tipoMant:"todos",maquina:"todas",fechaD:"",fechaH:"",fechaDia:"",filtroCosto:"total",insumoFiltro:"todos",verGastosExcesivos:false});
+    // Migración única de selectores mensuales guardados antes de que
+    // Mantenimiento adoptara el cierre operativo de OPS (26 → 25). Sólo se
+    // reconoce el rango calendario completo; cualquier rango manual queda tal cual.
+    const from=String(state?.fechaD||""),to=String(state?.fechaH||"");
+    const last=from&&to&&from.slice(0,7)===to.slice(0,7)&&from.slice(8,10)==="01"&&to===`${to.slice(0,7)}-${String(new Date(Number(to.slice(0,4)),Number(to.slice(5,7)),0).getDate()).padStart(2,"0")}`;
+    if(state?.modo!=="periodo"||!last)return state;
+    const year=Number(to.slice(0,4)),month=Number(to.slice(5,7));
+    const previous=new Date(year,month-2,26,12);
+    return {...state,fechaD:`${previous.getFullYear()}-${String(previous.getMonth()+1).padStart(2,"0")}-26`,fechaH:`${to.slice(0,7)}-25`};
+  });
   const[stRma15CtrlEquipo,setStRma15CtrlEquipo]=useState(()=>savedOr("stRma15CtrlEquipo",{proyecto:"todos",maquina:"todas",año:String(new Date().getFullYear()),mesIdx:new Date().getMonth(),fechaSel:""}));
   const[stCHC,setStCHC]=useState(()=>savedOr("stCHC",{proyecto:"todos",añoSelec:String(new Date().getFullYear()),mesIdx:new Date().getMonth()}));
   const[stRanking,setStRanking]=useState(()=>savedOr("stRanking",{proyecto:"todos",modeR:"periodo",fecha:"",fechaD:"",fechaH:""}));
@@ -405,21 +416,12 @@ export default function App(){
       setRop02All(normalizedRop02.filter(r=>dmProjectMatches(r.proyecto,proyectoUsuario)));
     }
 
-    const insumosMap={};
+    let insumosMap={};
     if(src.insumos?.ok&&src.insumos.data){
-      src.insumos.data.forEach(r=>{
-        // La fuente vigente usa "Cód. artículo". Mantenerla primero evita que
-        // una coincidencia parcial tome otra columna "Código" de la fila.
-        const cod=normalizeInsumoCode(getValue(r,["Cód. artículo","Cod. artículo","Cód articulo","Cod articulo","CODIGO","Codigo","Código","codigo","código","Cod","cod"])||"");
-        if(cod){
-          const descripcion=String(getValue(r,["DESCRIPCIÓN","DESCRIPCION","Descripción","Descripcion","descripcion","Artículo","Articulo","ARTICULO","Insumo","Nombre"])||"").trim();
-          insumosMap[cod]={
-            descripcion,
-            descripcionAdicional:getInsumoExtra(r,descripcion),
-            costoUnitario:toMoneyNumber(getValue(r,["COSTO UNITARIO","Costo Unitario","Costo unitario","Precio unitario con IVA","PRECIO UNITARIO CON IVA","precio unitario con IVA","Precio unitario","PRECIO UNITARIO","Precio","PRECIO","Costo","COSTO"])),
-          };
-        }
-      });
+      // Encabezados canónicos: ["Cód. artículo","Cod. artículo","Cód articulo"].
+      // La resolución y la deduplicación viven en buildInsumosCatalog para que
+      // el Dashboard y RMA15 consuman exactamente el mismo catálogo.
+      insumosMap=buildInsumosCatalog(src.insumos.data);
       setInsumos(insumosMap);
     }
 

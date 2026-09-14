@@ -972,6 +972,31 @@ function normalizeInsumoCode(value){
     .replace(/[–—]/g,"-");
 }
 
+// Supabase conserva el historial de compras; OPS expone un artículo vigente.
+// Se replica esa selección: último comprobante por fecha y primer origen como
+// desempate estable, valorizado con el precio unitario con IVA.
+function buildInsumosCatalog(rows){
+  const catalog={};
+  (rows||[]).forEach((row,index)=>{
+    const codigo=normalizeInsumoCode(getValue(row,["Cód. artículo","Cod. artículo","Cód articulo","Cod articulo","CODIGO","Codigo","Código","codigo","código","Cod","cod"])||"");
+    if(!codigo)return;
+    const fecha=normDate(getValue(row,["Fecha de emisión","Fecha de emision","Fecha emisión","Fecha emision"])||"")||"";
+    const sourceRow=Number(row?._sourceRow??row?.source_row??index);
+    const current=catalog[codigo];
+    if(current&&(fecha<current._fecha||(fecha===current._fecha&&sourceRow>=current._sourceRow)))return;
+    const descripcion=String(getValue(row,["DESCRIPCIÓN","DESCRIPCION","Descripción","Descripcion","descripcion","Artículo","Articulo","ARTICULO","Insumo","Nombre"])||"").trim();
+    catalog[codigo]={
+      descripcion,
+      descripcionAdicional:getInsumoExtra(row,descripcion),
+      costoUnitario:toMoneyNumber(getValue(row,["Precio unitario con IVA","PRECIO UNITARIO CON IVA","precio unitario con IVA","COSTO UNITARIO","Costo Unitario","Costo unitario","Precio unitario","PRECIO UNITARIO","Precio","PRECIO","Costo","COSTO"])),
+      _fecha:fecha,
+      _sourceRow:sourceRow,
+    };
+  });
+  Object.values(catalog).forEach(item=>{delete item._fecha;delete item._sourceRow;});
+  return catalog;
+}
+
 function normalizeRMA15(r, insumosMap){
   const fecha=normDate(r["Fecha de OT"]||"");
   const maquina=cleanMachine(r["CODIGO N° INTERNO"]||"");
@@ -1622,6 +1647,7 @@ export {
   fmtARS,
   fmtUSD,
   normalizeInsumoCode,
+  buildInsumosCatalog,
   normalizeRMA15,
   normalizeROP05,
   esNoProductivo,

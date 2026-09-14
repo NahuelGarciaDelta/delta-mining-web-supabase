@@ -5,7 +5,7 @@ import { fetchAction } from "../../services/appsScriptApi.js";
 import { fetchStockData } from "../../services/stockService.js";
 import { PM_INITIAL_SEED } from "../mantenimiento/pmInitialSeed.js";
 import FleetUtilizationPanel from "./FleetUtilizationPanel.jsx";
-import {getValue,normalizeInsumoCode,toMoneyNumber} from "../../shared/domain/index.jsx";
+import {buildInsumosCatalog,normalizeInsumoCode} from "../../shared/domain/index.jsx";
 import {
   Area,
   AreaChart,
@@ -120,15 +120,10 @@ export default function ExecutiveDashboard({rop02All:propRop02All=[],rop05=[],rm
   // La normalización global calcula costoTotal al hidratar App. Como el catálogo
   // puede llegar después que RMA15, el dashboard reconstruye el valor desde las
   // mismas filas fuente si ese total todavía quedó en cero.
-  const insumoPriceByCode=useMemo(()=>{
-    const prices=new Map();
-    safe(rawSources?.insumos?.data).forEach(row=>{
-      const code=normalizeInsumoCode(getValue(row,["Cód. artículo","Cod. artículo","Cód articulo","Cod articulo","Código","Codigo","CODIGO","Cod"])||"");
-      const price=toMoneyNumber(getValue(row,["Costo unitario","Precio unitario con IVA","Precio unitario","PRECIO UNITARIO","Precio","Costo"]));
-      if(code&&price>0)prices.set(code,price);
-    });
-    return prices;
-  },[rawSources?.insumos?.data]);
+  const insumoPriceByCode=useMemo(()=>new Map(
+    Object.entries(buildInsumosCatalog(safe(rawSources?.insumos?.data)))
+      .map(([code,item])=>[code,Number(item?.costoUnitario)||0])
+  ),[rawSources?.insumos?.data]);
   const maintCostResolved=r=>{
     const direct=maintCost(r);
     if(direct>0)return direct;
