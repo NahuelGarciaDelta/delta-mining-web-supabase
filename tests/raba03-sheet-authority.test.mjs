@@ -3,7 +3,7 @@ import fs from "node:fs";
 import test from "node:test";
 
 const source=fs.readFileSync(new URL("../src/services/abastecimientoSupabase.js",import.meta.url),"utf8");
-const sql=fs.readFileSync(new URL("../supabase/sql/20260914_session_security_hardening.sql",import.meta.url),"utf8");
+const sql=fs.readFileSync(new URL("../supabase/sql/20260914_secure_app_sessions_and_abastecimiento_v2.sql",import.meta.url),"utf8");
 const appScript=fs.readFileSync(new URL("../docs/appscript/Delta_RABA03_Outbox_2026-09-14.gs",import.meta.url),"utf8");
 
 test("RABA03 lee desde Supabase como backend operativo principal",()=>{
@@ -17,14 +17,16 @@ test("RABA03 escribe primero en RPC v2 de Supabase con sesión",()=>{
   assert.match(source,/abastecimiento_update_raba03_v2/);
   assert.match(source,/abastecimiento_delete_raba03_solicitud_v2/);
   assert.match(source,/p_auth_token:authToken_\(\)/);
+  assert.match(sql,/app_require_session_/);
+  assert.match(sql,/app_sync_outbox/);
   assert.doesNotMatch(source,/action:"add_raba03_rows_append_only"|save_raba03_cant_enviada|save_raba03_codigos/);
 });
 
 test("RABA03 replica a Sheets por outbox sin escritura directa desde frontend",()=>{
-  assert.match(sql,/app_sync_outbox/);
   assert.match(appScript,/app_sync_outbox_pull/);
   assert.match(appScript,/app_sync_outbox_ack/);
-  assert.match(appScript,/raba03/i);
+  assert.match(appScript,/deltaApplyRaba03OutboxEvent_/);
+  assert.match(appScript,/syncSupabaseOutboxToSheetsV2_/);
 });
 
 test("RABA03 stale local cache is invalidated after Supabase reads and writes",()=>{
