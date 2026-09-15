@@ -7,6 +7,12 @@ const appSource = fs.readFileSync(new URL("../src/App.jsx", import.meta.url), "u
 const backendUrl = new URL("../AppsScript_Delta_Mining_OPS_FINAL.txt", import.meta.url);
 const backend = fs.existsSync(backendUrl) ? fs.readFileSync(backendUrl, "utf8") : "";
 
+test("Ítems con salida cuenta cerradas más parciales y no movimientos de remitos", () => {
+  const card=moduleSource.split('label="Ítems con salida"')[1]?.split('/>')[0]||"";
+  assert.match(card,/value=\{fmtNum\(d\.cerradas\+d\.parciales\)\}/);
+  assert.doesNotMatch(card,/movimientos\.length/);
+});
+
 test("Abastecimiento importa y registra registerRefreshTask en el scope del módulo", () => {
   assert.match(moduleSource, /import\s*\{\s*registerRefreshTask\s*\}\s*from\s*["']\.\.\/\.\.\/services\/refreshManager\.js["']/);
   assert.match(moduleSource, /registerRefreshTask\(["']abastecimiento["']/);

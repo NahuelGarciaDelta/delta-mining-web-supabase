@@ -2006,7 +2006,7 @@ export function AbastecimientoModule({initialTab="solicitudes",readOnly=false,as
       <div data-dm-disable-global-column-filters="1" style={{display:"grid",gap:14}}>
         <div style={{display:"grid",gridTemplateColumns:"repeat(4,minmax(150px,1fr))",gap:10}}>
           <StatCard icon="report" label="Promedio indicador" value={`${fmtNum(d.avg.toFixed(1))} días`} sub="fecha salida - fecha solicitud" color={C.red} small/>
-          <StatCard icon="check" label="Ítems con salida" value={fmtNum(d.movimientos.length)} sub="con remito asignado" color={C.green} small/>
+          <StatCard icon="check" label="Ítems con salida" value={fmtNum(d.cerradas+d.parciales)} sub="cerradas + parciales" color={C.green} small/>
           <StatCard icon="warn" label="Pendientes" value={fmtNum(d.pendientes)} sub="sin artículos enviados" color={C.yellow} small/>
           <StatCard icon="database" label="Total solicitudes" value={fmtNum(d.total)} sub="ítems cargados" color={C.blue} small/>
         </div>
