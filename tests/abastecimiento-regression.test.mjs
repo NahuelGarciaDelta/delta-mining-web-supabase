@@ -17,9 +17,10 @@ test("Abastecimiento usa cache inmediato y revalida remitos/estados sin bloquear
   assert.match(moduleSource, /Promise\.allSettled\(\[/);
   assert.match(moduleSource, /loadRaba03\(\{silent:hasCachedRows,remitosOverride:sharedRemitos\}\)/);
   assert.match(moduleSource, /fetchAbastecimiento/);
-  assert.match(moduleSource, /const sourceRemitos=Array\.isArray\(remitosOverride\)\?remitosOverride:remitos/);
-  assert.match(moduleSource, /allocateRemitosToRequests/);
-  assert.match(moduleSource, /mapRaba03Rows\(raw,sourceRemitos\)/);
+  assert.match(moduleSource, /allocateAbastecimientoRemitos/);
+  assert.match(moduleSource, /sourceRemitos:remitos/);
+  assert.match(moduleSource, /mapRaba03Rows\(raw\)/);
+  assert.match(moduleSource, /abastecimientoAllocation\.rows/);
 });
 
 test("App conserva todas las rutas de Abastecimiento y su Error Boundary", () => {
@@ -62,4 +63,7 @@ test("Abastecimiento usa Supabase para RABA03, remitos y estados compartidos", (
   assert.doesNotMatch(moduleSource, /action=estados_solicitudes/);
   assert.doesNotMatch(moduleSource, /save_raba03_cant_enviada/);
   assert.doesNotMatch(moduleSource, /save_raba03_codigos/);
+  assert.match(moduleSource, /data-dm-disable-global-column-filters="1"/);
+  assert.match(moduleSource, /const unique=Array\.isArray\(row\._matchedRemitos\)\?row\._matchedRemitos:\[\]/);
+  assert.match(moduleSource, /abastecimientoAllocation\.unmatched/);
 });

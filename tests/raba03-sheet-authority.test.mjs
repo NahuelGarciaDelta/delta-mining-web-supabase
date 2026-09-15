@@ -4,22 +4,20 @@ import test from "node:test";
 
 const source=fs.readFileSync(new URL("../src/services/abastecimientoSupabase.js",import.meta.url),"utf8");
 
-test("RABA03 reads from authoritative Google Sheet, not Supabase table",()=>{
-  assert.match(source,/readRaba03FromGoogleSheet_/);
-  assert.match(source,/sheetUrl_\("raba03"/);
-  assert.match(source,/force:\"1\"/);
-  assert.match(source,/raba03Source:\"google-sheet-authoritative\"/);
+test("RABA03, remitos y estados se leen en un único snapshot de Supabase",()=>{
+  assert.match(source,/rpc\("abastecimiento_snapshot",\{\}\)/);
+  assert.doesNotMatch(source,/script\.google\.com|readRaba03FromGoogleSheet_|sheetUrl_/);
 });
 
-test("RABA03 writes persist to Google Sheet before reporting success",()=>{
-  assert.match(source,/action:\"add_raba03_rows_append_only\"/);
-  assert.match(source,/\?\"save_raba03_cant_enviada\"/);
-  assert.match(source,/\?\"save_raba03_codigos\"/);
-  assert.doesNotMatch(source,/rpc\(\"abastecimiento_append_raba03\"/);
-  assert.doesNotMatch(source,/rpc\(\"abastecimiento_update_raba03\"/);
+test("RABA03 escribe en Supabase y deja la réplica legacy a la outbox",()=>{
+  assert.match(source,/rpc\("abastecimiento_append_raba03"/);
+  assert.match(source,/rpc\("abastecimiento_update_raba03"/);
+  assert.match(source,/rpc\("abastecimiento_delete_raba03_solicitud"/);
+  assert.doesNotMatch(source,/fetch\(|save_raba03_cant_enviada|save_raba03_codigos/);
 });
 
-test("RABA03 stale local cache is invalidated after authoritative reads and writes",()=>{
-  assert.match(source,/RABA03_LOCAL_CACHE_KEY/);
-  assert.match(source,/clearDatasetCache\(RABA03_LOCAL_CACHE_KEY\)/);
+test("el snapshot conserva cache corta y cada escritura lo invalida",()=>{
+  assert.match(source,/SNAPSHOT_TTL_MS=5000/);
+  assert.match(source,/snapshotPromise&&!force/);
+  assert.ok((source.match(/invalidateAbastecimientoSnapshot\(\)/g)||[]).length>=6);
 });

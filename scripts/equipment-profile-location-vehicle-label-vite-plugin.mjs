@@ -58,16 +58,28 @@ function sourceCode(row){`)
 
       if(!out.includes('dm-equipment-location-lines')){
         out=out.replace(
-          '          </div>}\n        </div>\n        <div className="dm-equipment-filter-panel"',
-`          </div>}
+          /<span>\{familia\|\|"Equipo"\}<\/span><span>·<\/span><span>\{marca\|\|"Sin marca"\}<\/span><span>·<\/span><span>\{modelo\|\|"Sin modelo"\}<\/span>\r?\n\s*<\/div>\}/,
+`<span>{familia||"Equipo"}</span><span>·</span><span>{marca||"Sin marca"}</span><span>·</span><span>{modelo||"Sin modelo"}</span>
+          </div>}
           {detailCode&&<div className="dm-equipment-location-lines" style={{marginTop:7,display:"flex",flexDirection:"column",gap:3,fontSize:11,fontWeight:700,color:C.textSub}}>
             <div><span style={{color:C.textMuted}}>Último proyecto:</span> <span style={{color:C.blue}}>{lastProject}</span></div>
             <div><span style={{color:C.textMuted}}>Lugar actual:</span> <span style={{color:C.text}}>{currentRentalPlace}</span></div>
-          </div>}
-        </div>
-        <div className="dm-equipment-filter-panel"`
+          </div>}`
         )
       }
+
+      const required=[
+        'function dmVehiclePlateFromMaster(',
+        'const displayDetailCode=',
+        'isVehicle=familyNorm.includes("CAMIONETA")||familyNorm.includes("CAMION")',
+        'displayPreferred=patente&&canonicalEquipmentCode(patente)!==canonicalEquipmentCode(preferred)',
+        '{displayDetailCode||"Seleccioná un equipo"}',
+        'className="dm-equipment-location-lines"',
+        'Último proyecto:',
+        'Lugar actual:',
+      ]
+      const missing=required.filter(marker=>!out.includes(marker))
+      if(missing.length)throw new Error(`Transform de patente/ubicación incompleto en EquipmentProfileView.jsx: ${missing.join(', ')}`)
 
       return out===code?null:{code:out,map:null}
     }

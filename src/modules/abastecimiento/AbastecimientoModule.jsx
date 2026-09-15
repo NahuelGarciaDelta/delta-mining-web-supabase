@@ -6,6 +6,7 @@ import { readCachedSource, writeCachedSource } from "../../services/appCache.js"
 import { getAbastecimientoSnapshot, saveAbastecimientoRemito, deleteAbastecimientoRemito, setAbastecimientoEstado, appendAbastecimientoRaba03, updateAbastecimientoRaba03 } from "../../services/abastecimientoSupabase.js";
 import { useSharedStock } from "./stock/useSharedStock.js";
 import { stockValidationSummary, validateStockWorkbook } from "./stock/stockValidation.js";
+import { allocateAbastecimientoRemitos } from "./enviosSinSolicitud.js";
 import {useProgressiveRows} from "../../hooks/useProgressiveRows.js";
 import * as XLSX from "xlsx";
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, PieChart, Pie, Cell, AreaChart, Area, CartesianGrid, Legend, ReferenceLine } from "recharts";
@@ -598,74 +599,6 @@ export function AbastecimientoModule({initialTab="solicitudes",readOnly=false,as
     };
   },[formatDateLocal,pick,normCode,toNumber,normalizeCentroCosto,normalizeEmpresa,numeroSolicitudHistorica]);
 
-  const allocateRemitosToRequests=useCallback((requestRows=[],sourceRemitos=[])=>{
-    const rowsAllocated=(requestRows||[]).map(row=>({...row,cantidadEnviada:0,cantidadRestante:Math.max(0,toNumber(row.cantidadSolicitada)),_matchedRemitos:[]}));
-    const byKey=new Map();
-    rowsAllocated.forEach((row,index)=>{
-      const code=normCode(row.codigoArticulo);
-      const proyecto=normalizeCentroCosto(row.centroCosto);
-      if(!code||!proyecto)return;
-      const key=`${code}__${proyecto}`;
-      if(!byKey.has(key))byKey.set(key,[]);
-      byKey.get(key).push({row,index,fechaMs:parseChronoDateMs(row.fechaSolicitud)});
-    });
-    byKey.forEach(queue=>queue.sort((a,b)=>(a.fechaMs||0)-(b.fechaMs||0)||a.index-b.index));
-
-    const shipments=[];
-    (sourceRemitos||[]).forEach((remito,remitoIndex)=>{
-      const proyecto=normalizeCentroCosto(remito.proyecto||remito.observaciones||remito.destino||remito.centroCosto||remito.origen||"");
-      const fecha=remito.fecha||"";
-      const fechaMs=parseChronoDateMs(fecha);
-      (remito.items||[]).forEach((item,itemIndex)=>{
-        const code=normCode(item.codigo);
-        const cantidad=toNumber(item.cantidad);
-        if(!code||cantidad<=0)return;
-        shipments.push({
-          id:`${remito.id||remito.comprobante||"remito"}-${itemIndex}-${code}`,
-          code,proyecto,fecha,fechaMs,cantidad,
-          numero:remito.comprobante||"",
-          lugar:remito.destino||remito.observaciones||remito.origen||"",
-          insumo:item.descripcion||"",
-          remitoIndex,itemIndex,
-        });
-      });
-    });
-    shipments.sort((a,b)=>(a.fechaMs||0)-(b.fechaMs||0)||a.remitoIndex-b.remitoIndex||a.itemIndex-b.itemIndex);
-
-    const unmatched=[];
-    shipments.forEach(shipment=>{
-      let restanteEnvio=shipment.cantidad;
-      const key=shipment.proyecto?`${shipment.code}__${shipment.proyecto}`:"";
-      const queue=key?(byKey.get(key)||[]):[];
-      for(const req of queue){
-        if(restanteEnvio<=0)break;
-        // A shipment can only satisfy a request that already existed on shipment date.
-        if(req.fechaMs&&shipment.fechaMs&&req.fechaMs>shipment.fechaMs)continue;
-        const row=rowsAllocated[req.index];
-        const pendiente=Math.max(0,toNumber(row.cantidadSolicitada)-toNumber(row.cantidadEnviada));
-        if(pendiente<=0)continue;
-        const aplicado=Math.min(pendiente,restanteEnvio);
-        if(aplicado<=0)continue;
-        row.cantidadEnviada=toNumber(row.cantidadEnviada)+aplicado;
-        row.cantidadRestante=Math.max(0,toNumber(row.cantidadSolicitada)-row.cantidadEnviada);
-        row._matchedRemitos.push({numero:shipment.numero,fecha:formatDateLocal(shipment.fecha),cantidad:aplicado,lugar:shipment.lugar,insumo:shipment.insumo});
-        restanteEnvio-=aplicado;
-      }
-      if(restanteEnvio>0){
-        unmatched.push({
-          id:shipment.id,
-          codigoArticulo:shipment.code,
-          descripcion:shipment.insumo,
-          proyecto:shipment.proyecto||"SIN PROYECTO",
-          cantidadEnviada:restanteEnvio,
-          fechaEnvio:shipment.fecha,
-          numeroRemito:shipment.numero,
-        });
-      }
-    });
-    return {rows:rowsAllocated,unmatched};
-  },[normCode,toNumber,normalizeCentroCosto,formatDateLocal]);
-
   const buildSolicitudKey=useCallback((row)=>{
     return buildSolicitudStableKeyFromParts({
       nSolicitud:row.nSolicitud||row["N° de solicitud"]||row["Nº de solicitud"]||row["Solicitud"]||"",
@@ -857,15 +790,26 @@ export function AbastecimientoModule({initialTab="solicitudes",readOnly=false,as
     }
   },[rows,selectedReopenKeys,closedSolicitudes,buildSolicitudKey,postEstadoSolicitud,loadEstadosSolicitudesCompartidos]);
 
-  const mapRaba03Rows=useCallback((raw=[],sourceRemitos=[])=>{
+  const mapRaba03Rows=useCallback((raw=[])=>{
     const base=raw.map((row,index)=>normalizeRow(row,index)).filter(r=>
       [r.empresa,r.fechaSolicitud,r.fechaRequerida,r.pedidoPor,r.centroCosto,r.codigoArticulo,r.descripcion,r.cantidadSolicitada]
         .some(v=>String(v||"").trim()) &&
       !String(r.empresa||"").toLowerCase().includes("aprobado") &&
       !String(r.empresa||"").toLowerCase().includes("empresa")
     );
-    return allocateRemitosToRequests(base,sourceRemitos).rows;
-  },[normalizeRow,allocateRemitosToRequests]);
+    return base;
+  },[normalizeRow]);
+
+  const abastecimientoAllocation=useMemo(()=>allocateAbastecimientoRemitos({
+    requestRows:rows,
+    sourceRemitos:remitos,
+    normalizeCode:normCode,
+    normalizeProject:normalizeCentroCosto,
+    parseDateMs:parseChronoDateMs,
+    toNumber,
+    formatDate:formatDateLocal,
+    isRejected:row=>Boolean(rejectedSolicitudes?.[buildSolicitudKey(row)]),
+  }),[rows,remitos,normCode,normalizeCentroCosto,toNumber,formatDateLocal,rejectedSolicitudes,buildSolicitudKey]);
 
   const loadRaba03=useCallback(async({silent=false,remitosOverride=null}={})=>{
     if(!silent){
@@ -877,8 +821,7 @@ export function AbastecimientoModule({initialTab="solicitudes",readOnly=false,as
       if(!json?.ok)throw new Error("No se pudo leer RABA03 desde Supabase");
       const raw=Array.isArray(json.raba03)?json.raba03:[];
       rawRaba03RowsRef.current=raw;
-      const sourceRemitos=Array.isArray(remitosOverride)?remitosOverride:remitos;
-      const normalizedRows=mapRaba03Rows(raw,sourceRemitos);
+      const normalizedRows=mapRaba03Rows(raw);
       setRows(normalizedRows);
       writeCachedSource(RABA03_DATA_CACHE_KEY,{ok:true,data:normalizedRows,meta:{updatedAt:new Date().toISOString(),rows:normalizedRows.length}}).catch(()=>{});
     }catch(err){
@@ -891,7 +834,7 @@ export function AbastecimientoModule({initialTab="solicitudes",readOnly=false,as
     }finally{
       if(!silent)setLoading(false);
     }
-  },[mapRaba03Rows,remitos]);
+  },[mapRaba03Rows]);
 
   // Carga inicial stale-while-revalidate: primero pinta la última copia local
   // y luego sincroniza remitos/estados en paralelo. Nunca queda esperando una
@@ -1129,19 +1072,10 @@ export function AbastecimientoModule({initialTab="solicitudes",readOnly=false,as
   },[importModal.rows,loadRaba03]);
 
   const guardarDatosRABA03=useCallback(async()=>{
-    const payloadRows=(rows||[])
+    const payloadRows=(abastecimientoAllocation.rows||[])
       .filter(r=>String(r.nSolicitud||"").trim())
       .map(r=>{
-        const code=normCode(r.codigoArticulo);
-        const proyecto=normalizeCentroCosto(r.centroCosto);
-        const matches=[...(remitosByCode[`${code}__${proyecto}`]||[])];
-        const seen=new Set();
-        const unique=matches.filter(m=>{
-          const k=`${m.numero}__${m.fecha}__${m.cantidad}`;
-          if(seen.has(k))return false;
-          seen.add(k);
-          return true;
-        });
+        const unique=Array.isArray(r._matchedRemitos)?r._matchedRemitos:[];
         const numeros=[...new Set(unique.map(m=>String(m.numero||"").trim()).filter(Boolean))];
         const fechas=[...new Set(unique.map(m=>String(m.fecha||"").trim()).filter(Boolean))];
         const cantidadRemito=unique.reduce((acc,m)=>acc+toNumber(m.cantidad),0);
@@ -1171,7 +1105,7 @@ export function AbastecimientoModule({initialTab="solicitudes",readOnly=false,as
     }finally{
       setLoading(false);
     }
-  },[rows,toNumber,loadRaba03,normCode,normalizeCentroCosto,remitosByCode]);
+  },[abastecimientoAllocation.rows,toNumber,loadRaba03]);
 
 
   const guardarCodigosRABA03=useCallback(async()=>{
@@ -1202,8 +1136,8 @@ export function AbastecimientoModule({initialTab="solicitudes",readOnly=false,as
   // Base visible para el usuario conectado. Todos los indicadores, gráficos y
   // tablas de solicitudes se calculan exclusivamente sobre estas filas.
   const assignedRows=useMemo(()=>
-    (rows||[]).filter(r=>dmProjectMatches(r.centroCosto,assignedProject)),
-  [rows,assignedProject]);
+    (abastecimientoAllocation.rows||[]).filter(r=>dmProjectMatches(r.centroCosto,assignedProject)),
+  [abastecimientoAllocation.rows,assignedProject]);
   const projects=useMemo(()=>Array.from(new Set(assignedRows.map(r=>r.centroCosto).filter(Boolean))).sort((a,b)=>a.localeCompare(b,"es")),[assignedRows]);
   const companies=useMemo(()=>Array.from(new Set(assignedRows.map(r=>r.empresa).filter(Boolean))).sort((a,b)=>a.localeCompare(b,"es")),[assignedRows]);
   const supervisors=useMemo(()=>Array.from(new Set(assignedRows.map(r=>canonicalSupervisor(r.pedidoPor)).filter(Boolean))).sort((a,b)=>a.localeCompare(b,"es")),[assignedRows,canonicalSupervisor]);
@@ -1303,16 +1237,7 @@ export function AbastecimientoModule({initialTab="solicitudes",readOnly=false,as
   const raba03DownloadRows=useMemo(()=>{
     const out=[];
     (sortedRows||[]).forEach(row=>{
-      const code=normCode(row.codigoArticulo);
-      const proyecto=normalizeCentroCosto(row.centroCosto);
-      const matches=[...(remitosByCode[`${code}__${proyecto}`]||[])];
-      const seen=new Set();
-      const unique=matches.filter(m=>{
-        const k=`${m.numero}__${m.fecha}__${m.cantidad}`;
-        if(seen.has(k))return false;
-        seen.add(k);
-        return true;
-      });
+      const unique=Array.isArray(row._matchedRemitos)?row._matchedRemitos:[];
       const base={};
       RABA03_EXPORT_COLUMNS.forEach(c=>{base[c.key]=(c.key==="fechaSolicitud"||c.key==="fechaRequerida")?formatDateLocal(row[c.key]):(row[c.key] instanceof Date?formatDateLocal(row[c.key]):(row[c.key]??""));});
       if(unique.length){
@@ -1328,21 +1253,13 @@ export function AbastecimientoModule({initialTab="solicitudes",readOnly=false,as
       }
     });
     return out;
-  },[sortedRows,remitosByCode,normCode,normalizeCentroCosto,calcularIndicadorRABA03]);
+  },[sortedRows,calcularIndicadorRABA03]);
 
   const raba03DashboardRows=useMemo(()=>{
     const out=[];
     (assignedRows||[]).forEach(row=>{
-      const code=normCode(row.codigoArticulo);
-      const proyecto=normalizeCentroCosto(row.centroCosto);
-      const matches=[...(remitosByCode[`${code}__${proyecto}`]||[])];
-      const seen=new Set();
-      const unique=matches.filter(m=>{
-        const k=`${m.numero}__${m.fecha}__${m.cantidad}`;
-        if(seen.has(k))return false;
-        seen.add(k);
-        return true;
-      });
+      if(rejectedSolicitudes?.[buildSolicitudKey(row)])return;
+      const unique=Array.isArray(row._matchedRemitos)?row._matchedRemitos:[];
       if(unique.length){
         unique.forEach(m=>out.push({
           nSolicitud:row.nSolicitud,
@@ -1359,7 +1276,7 @@ export function AbastecimientoModule({initialTab="solicitudes",readOnly=false,as
       }
     });
     return out;
-  },[assignedRows,remitosByCode,normCode,normalizeCentroCosto,calcularIndicadorRABA03]);
+  },[assignedRows,rejectedSolicitudes,buildSolicitudKey,calcularIndicadorRABA03]);
 
   const abastecimientoDashboardData=useMemo(()=>{
     const movimientos=(raba03DashboardRows||[]).map(r=>({...r,indicadorNum:Number(r.indicador)})).filter(r=>Number.isFinite(r.indicadorNum));
@@ -1399,36 +1316,15 @@ export function AbastecimientoModule({initialTab="solicitudes",readOnly=false,as
   },[raba03DashboardRows,assignedRows,toNumber,parseRabaDateMs,buildSolicitudKey,rejectedSolicitudes,closedSolicitudes]);
 
   const enviosSinSolicitudRows=useMemo(()=>{
-    const codigosSolicitados=new Set(
-      (rows||[])
-        .map(r=>normCode(r.codigoArticulo))
-        .filter(Boolean)
-    );
-
-    const out=[];
-    (remitos||[]).forEach(rem=>{
-      const fecha=rem.fecha||"";
-      (rem.items||[]).forEach((item,index)=>{
-        const codigoNormalizado=normCode(item.codigo);
-        if(!codigoNormalizado||codigosSolicitados.has(codigoNormalizado))return;
-        out.push({
-          id:`${rem.id||rem.comprobante||"remito"}-${index}-${codigoNormalizado}`,
-          codigoArticulo:String(item.codigo||"").trim(),
-          descripcion:String(item.descripcion||"").trim(),
-          cantidadEnviada:toNumber(item.cantidad),
-          fechaEnvio:fecha,
-          numeroRemito:rem.comprobante||""
-        });
-      });
-    });
-
-    return out.sort((a,b)=>{
+    return (abastecimientoAllocation.unmatched||[])
+      .filter(r=>dmProjectMatches(r.proyecto,assignedProject))
+      .sort((a,b)=>{
       const da=parseRabaDateMs(a.fechaEnvio)??0;
       const db=parseRabaDateMs(b.fechaEnvio)??0;
       if(db!==da)return db-da;
       return String(a.codigoArticulo||"").localeCompare(String(b.codigoArticulo||""),"es",{numeric:true,sensitivity:"base"});
     });
-  },[rows,remitos,normCode,toNumber,parseRabaDateMs]);
+  },[abastecimientoAllocation.unmatched,assignedProject,parseRabaDateMs]);
 
   const exportarEnviosSinSolicitud=useCallback(()=>{
     if(!enviosSinSolicitudRows.length){
@@ -1436,12 +1332,12 @@ export function AbastecimientoModule({initialTab="solicitudes",readOnly=false,as
       return;
     }
     const data=[
-      ["Código de artículo","Descripción","Remito","Cant. enviada","Fecha de envío"],
-      ...enviosSinSolicitudRows.map(r=>[r.codigoArticulo,r.descripcion,r.numeroRemito||"",r.cantidadEnviada,formatDateLocal(r.fechaEnvio)])
+      ["Código de artículo","Descripción","Proyecto","Remito","Cant. enviada","Fecha de envío"],
+      ...enviosSinSolicitudRows.map(r=>[r.codigoArticulo,r.descripcion,r.proyecto||"",r.numeroRemito||"",r.cantidadEnviada,formatDateLocal(r.fechaEnvio)])
     ];
     const wb=XLSX.utils.book_new();
     const ws=XLSX.utils.aoa_to_sheet(data);
-    ws["!cols"]=[{wch:18},{wch:52},{wch:20},{wch:16},{wch:16}];
+    ws["!cols"]=[{wch:18},{wch:52},{wch:24},{wch:20},{wch:16},{wch:16}];
     XLSX.utils.book_append_sheet(wb,ws,"Envíos sin solicitud");
     XLSX.writeFile(wb,`Envios_sin_solicitud_${new Date().toISOString().slice(0,10)}.xlsx`);
   },[enviosSinSolicitudRows,formatDateLocal]);
@@ -2107,7 +2003,7 @@ export function AbastecimientoModule({initialTab="solicitudes",readOnly=false,as
     const d=abastecimientoDashboardData;
     const pieColors=[C.yellow,C.blue,C.green,C.red,C.teal];
     return (
-      <div style={{display:"grid",gap:14}}>
+      <div data-dm-disable-global-column-filters="1" style={{display:"grid",gap:14}}>
         <div style={{display:"grid",gridTemplateColumns:"repeat(4,minmax(150px,1fr))",gap:10}}>
           <StatCard icon="report" label="Promedio indicador" value={`${fmtNum(d.avg.toFixed(1))} días`} sub="fecha salida - fecha solicitud" color={C.red} small/>
           <StatCard icon="check" label="Ítems con salida" value={fmtNum(d.movimientos.length)} sub="con remito asignado" color={C.green} small/>
@@ -2770,18 +2666,19 @@ export function AbastecimientoModule({initialTab="solicitudes",readOnly=false,as
 
   const renderEnviosSinSolicitud=()=>{
     const cols=[
-      {key:"codigoArticulo",label:"Código de artículo",width:"16%"},
-      {key:"descripcion",label:"Descripción",width:"47%"},
-      {key:"numeroRemito",label:"Remito",width:"15%"},
-      {key:"cantidadEnviada",label:"Cant. enviada",align:"right",width:"10%"},
-      {key:"fechaEnvio",label:"Fecha de envío",width:"12%"},
+      {key:"codigoArticulo",label:"Código de artículo",width:"14%"},
+      {key:"descripcion",label:"Descripción",width:"36%"},
+      {key:"proyecto",label:"Proyecto",width:"16%"},
+      {key:"numeroRemito",label:"Remito",width:"14%"},
+      {key:"cantidadEnviada",label:"Cant. enviada",align:"right",width:"9%"},
+      {key:"fechaEnvio",label:"Fecha de envío",width:"11%"},
     ];
     return (
       <Card>
         <div style={{padding:14,borderBottom:`1px solid ${C.border}33`,display:"flex",alignItems:"center",justifyContent:"space-between",gap:12,flexWrap:"wrap"}}>
           <div>
             <div style={{fontSize:15,fontWeight:900,color:C.text}}>Envíos sin solicitud</div>
-            <div style={{fontSize:11,color:C.textSub,fontWeight:700}}>Artículos cargados mediante remitos cuyo código no existe en ninguna solicitud RABA03.</div>
+            <div style={{fontSize:11,color:C.textSub,fontWeight:700}}>Cantidades de remitos que no pudieron asignarse por FIFO a una solicitud anterior del mismo código y proyecto.</div>
           </div>
           <div style={{display:"flex",alignItems:"center",gap:9}}>
             <span style={badgeStyle(enviosSinSolicitudRows.length?"bad":"ok")}>{fmtNum(enviosSinSolicitudRows.length)} registros</span>
@@ -2801,11 +2698,12 @@ export function AbastecimientoModule({initialTab="solicitudes",readOnly=false,as
                 <tr key={r.id}>
                   <td style={{...tdStyle,paddingLeft:10,paddingRight:10,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}} title={r.codigoArticulo||""}>{r.codigoArticulo||"S/C"}</td>
                   <td style={{...tdStyle,paddingLeft:10,paddingRight:10,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}} title={r.descripcion||""}>{r.descripcion||"—"}</td>
+                  <td style={{...tdStyle,paddingLeft:10,paddingRight:10,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}} title={r.proyecto||""}>{r.proyecto||"SIN PROYECTO"}</td>
                   <td style={{...tdStyle,paddingLeft:10,paddingRight:10,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis",fontWeight:800}} title={r.numeroRemito||""}>{r.numeroRemito||"—"}</td>
                   <td style={{...tdStyle,paddingLeft:10,paddingRight:10,textAlign:"right",fontWeight:900,color:C.yellow,whiteSpace:"nowrap"}}>{fmtNum(r.cantidadEnviada)}</td>
                   <td style={{...tdStyle,paddingLeft:10,paddingRight:10,whiteSpace:"nowrap"}}>{formatDateLocal(r.fechaEnvio)||"—"}</td>
                 </tr>
-              )):(<tr><td colSpan={5} style={{...tdStyle,textAlign:"center",padding:28,color:C.textSub}}>No se detectaron artículos enviados sin solicitud.</td></tr>)}
+              )):(<tr><td colSpan={6} style={{...tdStyle,textAlign:"center",padding:28,color:C.textSub}}>No se detectaron artículos enviados sin solicitud.</td></tr>)}
             </tbody>
           </table>
         </div>
