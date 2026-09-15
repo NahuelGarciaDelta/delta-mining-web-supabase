@@ -10,6 +10,8 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
       - uses: actions/setup-node@v4
         with:
           node-version: '22'
@@ -17,9 +19,9 @@ jobs:
       - run: npm ci
       - name: Regression tests
         run: node --test tests/abastecimiento-write-reliability.test.mjs tests/abastecimiento-regression.test.mjs
-      - name: Full tests
-        run: npm test
+      - name: Full validation
+        run: npm run validate
       - name: Build
         run: npm run build
       - name: Diff check
-        run: git diff --check HEAD^
+        run: git diff --check origin/main...HEAD
