@@ -1,3 +1,5 @@
+import {buildRequestKey,runDedupedRequest} from "./requestCoordinator.js";
+
 const registry = new Map();
 
 export function registerRefreshTask(id, handler, { views = [], priority = 50 } = {}) {
@@ -16,15 +18,19 @@ export function listRefreshTasks(view) {
 }
 
 export async function runRefreshTasks(view, context = {}) {
-  const tasks = listRefreshTasks(view);
-  const results = [];
-  for (const task of tasks) {
-    try {
-      const value = await task.handler({ view, ...context });
-      results.push({ id: task.id, ok: true, value });
-    } catch (error) {
-      results.push({ id: task.id, ok: false, error });
+  // Manual/auto refresh concurrente de la misma vista comparte un único ciclo.
+  const key=buildRequestKey("refresh-view",{view:String(view||"")});
+  return runDedupedRequest(key,async()=>{
+    const tasks = listRefreshTasks(view);
+    const results = [];
+    for (const task of tasks) {
+      try {
+        const value = await task.handler({ view, ...context });
+        results.push({ id: task.id, ok: true, value });
+      } catch (error) {
+        results.push({ id: task.id, ok: false, error });
+      }
     }
-  }
-  return results;
+    return results;
+  },{dataset:`refresh:${String(view||"")}`});
 }

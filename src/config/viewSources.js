@@ -1,5 +1,7 @@
 export const VIEW_SOURCES = Object.freeze({
-  bienvenida:["lista_equipos","rop02_fs","rop02_jm","rop02_filosur","rop02_zorro","rma15_fs","rma15_jm"],
+  // Bienvenida usa endpoints resumen livianos propios para ROP02/RMA15; sólo necesita
+  // Lista Maestra para clasificar la flota. Los históricos se cargan al abrir su módulo.
+  bienvenida:["lista_equipos"],
   equipmentProfile:["lista_equipos","rop02_fs","rop02_jm","rop02_filosur","rop02_zorro","rop05","rma15_fs","rma15_jm","insumos"],
   dashboard:["rop02_fs","rop02_jm","rop02_filosur","rop02_zorro","rop05","rma15_fs","rma15_jm","insumos","lista_equipos"],
   rop02:["rop02_fs","rop02_jm","rop02_filosur","rop02_zorro"],

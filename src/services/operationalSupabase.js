@@ -1,8 +1,8 @@
 import {requireSupabase} from "./supabaseClient.js";
 import {clearDatasetCache,readCachedSource,writeCachedSource} from "./appCache.js";
+import {markCacheHit,markCacheMiss,runDedupedRequest} from "./requestCoordinator.js";
 
 const actor=()=>String(sessionStorage.getItem("dm_user")||"APP").trim().toLowerCase()||"APP";
-const snapshotPending=new Map();
 const SNAPSHOT_PREFIX="supabase_snapshot:";
 
 const rpc=async(name,args={})=>{
@@ -14,13 +14,11 @@ const rpc=async(name,args={})=>{
 
 async function fetchSnapshot_(cacheKey,name,args={}){
   const fullKey=SNAPSHOT_PREFIX+cacheKey;
-  if(snapshotPending.has(fullKey))return snapshotPending.get(fullKey);
-  const task=rpc(name,args).then(async data=>{
+  return runDedupedRequest(`snapshot:${cacheKey}`,async()=>{
+    const data=await rpc(name,args);
     await writeCachedSource(fullKey,{ok:true,data,meta:{updatedAt:new Date().toISOString(),source:"supabase"}}).catch(()=>{});
     return data;
-  }).finally(()=>snapshotPending.delete(fullKey));
-  snapshotPending.set(fullKey,task);
-  return task;
+  },{dataset:cacheKey});
 }
 
 async function cachedSnapshot_(cacheKey,name,args={},options={}){
@@ -29,16 +27,19 @@ async function cachedSnapshot_(cacheKey,name,args={},options={}){
   if(!force){
     const cached=await readCachedSource(fullKey).catch(()=>null);
     if(cached?.data?.ok&&cached.data.data!==undefined){
-      // Apertura inmediata con la última copia válida y refresh silencioso detrás.
+      markCacheHit(fullKey,{dataset:cacheKey,level:"indexeddb"});
+      // SWR: devuelve de inmediato y revalida detrás, compartiendo la request.
       fetchSnapshot_(cacheKey,name,args).catch(()=>{});
       return cached.data.data;
     }
+    markCacheMiss(fullKey,{dataset:cacheKey});
   }
   return fetchSnapshot_(cacheKey,name,args);
 }
 
-async function invalidate_(keys){
-  const full=(Array.isArray(keys)?keys:[keys]).filter(Boolean).map(key=>SNAPSHOT_PREFIX+key);
+async function invalidate_(keys,{raw=false}={}){
+  const list=(Array.isArray(keys)?keys:[keys]).filter(Boolean);
+  const full=raw?list:list.map(key=>SNAPSHOT_PREFIX+key);
   if(full.length)await clearDatasetCache(full).catch(()=>{});
 }
 
@@ -78,17 +79,35 @@ export const cancelEquipmentMovementSupabase=async id=>{
   await invalidate_(["movimientos:active","movimientos:all"]);return value;
 };
 
-export const runOperationalWrite=(action,payload={})=>rpc("app_write_action",{p_action:String(action||""),p_payload:payload||{},p_actor:actor()});
+const WRITE_SOURCE_INVALIDATION=Object.freeze({
+  add_lista_equipo:["lista_equipos"],
+  update_lista_equipo:["lista_equipos"],
+  bulk_update_lista_equipos_from_app:["lista_equipos"],
+  update_rop02_row:["rop02_fs","rop02_jm","rop02_filosur","rop02_zorro"],
+});
+
+export const runOperationalWrite=async(action,payload={})=>{
+  const normalized=String(action||"");
+  const value=await rpc("app_write_action",{p_action:normalized,p_payload:payload||{},p_actor:actor()});
+  const affected=WRITE_SOURCE_INVALIDATION[normalized]||[];
+  if(affected.length)await invalidate_(affected,{raw:true});
+  return value;
+};
 export const deleteAbastecimientoRemito=id=>rpc("abastecimiento_delete_remito",{p_id:String(id||""),p_actor:actor()});
 
-export async function preloadOperationalSnapshots(){
-  await Promise.allSettled([
-    getPmSnapshot(),
-    getLicitacionesSnapshot(),
-    getStockSnapshot(),
-    getEquipmentMovementsSnapshot(false),
-    getEquipmentMovementsSnapshot(true),
-  ]);
+// Conserva la API histórica, pero no hace precarga global por defecto. Los módulos
+// que realmente quieran calentar un snapshot deben pedirlo explícitamente.
+export async function preloadOperationalSnapshots({sources=[]}={}){
+  const requested=[...new Set((sources||[]).filter(Boolean))];
+  if(!requested.length)return[];
+  const loaders={
+    pm:()=>getPmSnapshot(),
+    licitaciones:()=>getLicitacionesSnapshot(),
+    stock:()=>getStockSnapshot(),
+    movimientos:()=>getEquipmentMovementsSnapshot(false),
+    "movimientos:active":()=>getEquipmentMovementsSnapshot(true),
+  };
+  return Promise.allSettled(requested.map(key=>loaders[key]?.()).filter(Boolean));
 }
 
 export async function getSupabaseHealth(){

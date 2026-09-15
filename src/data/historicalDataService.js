@@ -1,4 +1,5 @@
 import {readCachedSource,writeCachedSource} from "../services/appCache.js";
+import {buildRequestKey as buildCoordinatorKey,markCacheHit,markCacheMiss,runDedupedRequest} from "../services/requestCoordinator.js";
 import {buildDatasetQueryKey} from "./historicalQueryParams.js";
 import {createPagedDatasetController as createPagedController} from "./pagedDatasetController.js";
 import {fetchAllRop02Pages,getLatestRop02ByEquipment,getRop02MonthlySummary as getSupabaseMonthlySummary,getRop02OperationalSnapshot as getSupabaseOperationalSnapshot,getRop02Page,getRop02Stats as getSupabaseRop02Stats,getRop02Facets as getSupabaseRop02Facets,getRop02Rop05Control as getSupabaseRop02Rop05Control} from "./rop02Repository.js";
@@ -7,7 +8,6 @@ export {buildDatasetQueryKey,operationalMonthRange,yearsForRange} from "./histor
 export {createPagedDatasetController} from "./pagedDatasetController.js";
 
 const memory=new Map();
-const pending=new Map();
 const MAX_MEMORY_QUERIES=8;
 const HISTORICAL_UPDATED_EVENT="dm-historical-dataset-updated";
 const COMMON_HISTORICAL_QUERY=Object.freeze({limit:"all",offset:0,sortBy:"fecha",sortDirection:"desc"});
@@ -15,9 +15,35 @@ const COMMON_HISTORICAL_QUERY=Object.freeze({limit:"all",offset:0,sortBy:"fecha"
 function remember_(key,value){memory.delete(key);memory.set(key,value);while(memory.size>MAX_MEMORY_QUERIES)memory.delete(memory.keys().next().value);}
 function notifyDatasetUpdated_(dataset,key,value,params){if(typeof window==="undefined"||typeof window.dispatchEvent!=="function")return;try{window.dispatchEvent(new CustomEvent(HISTORICAL_UPDATED_EVENT,{detail:{dataset,key,value,params:{...(params||{})}}}));}catch(_){}}
 
-export async function readDatasetQuery(dataset,params={}){const key=buildDatasetQueryKey(dataset,params);if(memory.has(key)){const value=memory.get(key);remember_(key,value);return{...value,cacheHit:true,cacheLevel:"memory"};}const record=await readCachedSource(`query:${key}`).catch(()=>null);if(record?.data?.ok){remember_(key,record.data);return{...record.data,cacheHit:true,cacheLevel:"indexeddb",cacheUpdatedAt:record.updatedAt||null};}return null;}
+export async function readDatasetQuery(dataset,params={}){
+  const key=buildDatasetQueryKey(dataset,params);
+  if(memory.has(key)){
+    const value=memory.get(key);remember_(key,value);markCacheHit(key,{dataset,level:"memory"});return{...value,cacheHit:true,cacheLevel:"memory"};
+  }
+  const record=await readCachedSource(`query:${key}`).catch(()=>null);
+  if(record?.data?.ok){remember_(key,record.data);markCacheHit(key,{dataset,level:"indexeddb"});return{...record.data,cacheHit:true,cacheLevel:"indexeddb",cacheUpdatedAt:record.updatedAt||null};}
+  markCacheMiss(key,{dataset});
+  return null;
+}
 
-export async function fetchDatasetPage(dataset,params={}){const key=buildDatasetQueryKey(dataset,params);if(pending.has(key))return pending.get(key);const started=performance.now();const supabaseRop02Request=()=>params.limit==="all"?(async()=>{const data=[];const meta=await fetchAllRop02Pages(params,page=>data.push(...page));return{ok:true,data,rows:data.length,total:meta.total,hasMore:false,nextOffset:null,source:"supabase"};})():getRop02Page({...params,limit:params.limit||250,offset:params.offset||0});const typedGetter=dataset==="rop05"?getRop05Page:dataset==="rma15"?getRma15Page:null;if(dataset!=="rop02"&&!typedGetter)throw new Error(`Dataset histórico no soportado por Supabase: ${dataset}`);const network=dataset==="rop02"?supabaseRop02Request():typedGetter(params);const task=network.then(async response=>{const value={...response,cacheHit:false,cacheLevel:"network",elapsedMs:Math.round(performance.now()-started)};remember_(key,value);await writeCachedSource(`query:${key}`,value);notifyDatasetUpdated_(dataset,key,value,params);return value;}).finally(()=>{if(pending.get(key)===task)pending.delete(key);});pending.set(key,task);return task;}
+export async function fetchDatasetPage(dataset,params={}){
+  const key=buildDatasetQueryKey(dataset,params);
+  const requestKey=buildCoordinatorKey("historical",{dataset,key});
+  return runDedupedRequest(requestKey,async({signal})=>{
+    const started=typeof performance!=="undefined"?performance.now():Date.now();
+    const requestParams={...params,signal};
+    const supabaseRop02Request=()=>params.limit==="all"?(async()=>{const data=[];const meta=await fetchAllRop02Pages(requestParams,page=>data.push(...page));return{ok:true,data,rows:data.length,total:meta.total,hasMore:false,nextOffset:null,source:"supabase"};})():getRop02Page({...requestParams,limit:params.limit||250,offset:params.offset||0});
+    const typedGetter=dataset==="rop05"?getRop05Page:dataset==="rma15"?getRma15Page:null;
+    if(dataset!=="rop02"&&!typedGetter)throw new Error(`Dataset histórico no soportado por Supabase: ${dataset}`);
+    const response=await(dataset==="rop02"?supabaseRop02Request():typedGetter(requestParams));
+    const finished=typeof performance!=="undefined"?performance.now():Date.now();
+    const value={...response,cacheHit:false,cacheLevel:"network",elapsedMs:Math.round(finished-started)};
+    remember_(key,value);
+    await writeCachedSource(`query:${key}`,value);
+    notifyDatasetUpdated_(dataset,key,value,params);
+    return value;
+  },{dataset,queryKey:key});
+}
 
 export async function getDataset(dataset,params={}){const cached=await readDatasetQuery(dataset,params);if(cached){fetchDatasetPage(dataset,params).catch(()=>{});return cached;}return fetchDatasetPage(dataset,params);}
 export const getRop02=params=>getDataset("rop02",params);
@@ -41,6 +67,6 @@ export const getRop02Rop05Control=params=>getSupabaseRop02Rop05Control(params);
 export const getRma15EquipmentUniverse=params=>getRma15EquipmentUniverseSupabase(params);
 export async function getRma15OpenOtSummary(params={}){const response=await getRma15OpenOtSummarySupabase(params);if(!Array.isArray(response?.data)||response.data.length===0){throw new Error("Resumen de OT abiertas vacío; recalcular desde RMA15 completo");}return response;}
 export async function getEquipmentHistory({equipo,desde="",hasta=""}){if(!String(equipo||"").trim())return{rop02:[],rop05:[],rma15:[]};const params={equipo,desde,hasta,limit:"all",offset:0};const [rop02,rop05,rma15]=await Promise.all([getRop02(params),getRop05(params),getRma15(params)]);return{rop02:rop02.data||[],rop05:rop05.data||[],rma15:rma15.data||[],meta:{rop02,rop05,rma15}};}
-export function clearHistoricalQueryMemory(){memory.clear();pending.clear();}
+export function clearHistoricalQueryMemory(){memory.clear();}
 export function createHistoricalPagedController(){return createPagedController(fetchDatasetPage);}
 export async function fetchAllDatasetPages(dataset,params={},onPage){if(dataset==="rop02")return fetchAllRop02Pages(params,onPage);if(dataset==="rop05"||dataset==="rma15")return fetchAllOperationalPages(dataset,params,onPage);let offset=0,total=0,hasMore=true;while(hasMore){const page=await fetchDatasetPage(dataset,{...params,limit:2000,offset});const rows=page.data||[];total=Number(page.total||total);hasMore=Boolean(page.hasMore);offset=Number(page.nextOffset||offset+rows.length);await onPage(rows,{offset,total,hasMore});if(!rows.length)break;}return{total};}

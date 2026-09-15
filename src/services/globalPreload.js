@@ -1,33 +1,25 @@
 import {getRop02,getRop05,getRma15,refreshHistoricalDataset} from "../data/historicalDataService.js";
+import {buildRequestKey,runDedupedRequest} from "./requestCoordinator.js";
 
-let preloadPromise=null;
-let preloadDone=false;
+const ALLOWED_DATASETS=Object.freeze({rop02:getRop02,rop05:getRop05,rma15:getRma15});
+const completed=new Set();
 
-export function isHistoricalPreloadReady(){return preloadDone;}
+export function isHistoricalPreloadReady(dataset){
+  if(dataset)return completed.has(String(dataset));
+  return completed.size>0;
+}
 
-export function preloadHistoricalDatasets({force=false}={}){
-  if(preloadDone&&!force)return Promise.resolve(true);
-  if(preloadPromise&&!force)return preloadPromise;
-
-  const common={limit:"all",offset:0,sortBy:"fecha",sortDirection:"desc"};
-  const jobs=force
-    ?[
-      refreshHistoricalDataset("rop02",common),
-      refreshHistoricalDataset("rop05",common),
-      refreshHistoricalDataset("rma15",common),
-    ]
-    :[
-      getRop02(common),
-      getRop05(common),
-      getRma15(common),
-    ];
-
-  const task=Promise.allSettled(jobs).then(results=>{
-    preloadDone=results.some(result=>result.status==="fulfilled");
-    return preloadDone;
-  }).finally(()=>{
-    if(preloadPromise===task)preloadPromise=null;
-  });
-  preloadPromise=task;
-  return task;
+// API opt-in: ya no existe una precarga histórica global implícita. Un consumidor
+// debe declarar qué dataset necesita calentar y el coordinador comparte la request.
+export function preloadHistoricalDatasets({force=false,datasets=[],params={}}={}){
+  const requested=[...new Set((datasets||[]).map(String).filter(name=>ALLOWED_DATASETS[name]))];
+  if(!requested.length)return Promise.resolve(false);
+  const common={limit:"all",offset:0,sortBy:"fecha",sortDirection:"desc",...(params||{})};
+  const key=buildRequestKey("historical-preload",{datasets:requested.slice().sort(),params:common});
+  return runDedupedRequest(key,async()=>{
+    const jobs=requested.map(dataset=>force?refreshHistoricalDataset(dataset,common):ALLOWED_DATASETS[dataset](common));
+    const results=await Promise.allSettled(jobs);
+    results.forEach((result,index)=>{if(result.status==="fulfilled")completed.add(requested[index]);});
+    return results.some(result=>result.status==="fulfilled");
+  },{dataset:requested.join(",")});
 }
