@@ -5,11 +5,14 @@ import fs from "node:fs";
 const read=path=>fs.readFileSync(new URL(path,import.meta.url),"utf8");
 const sources=read("../src/config/viewSources.js");
 
-test("Bienvenida conserva consultas compactas y precarga ROP02 global desde Supabase",()=>{
+test("Bienvenida conserva consultas compactas y no solicita históricos ROP02/RMA15 globales",()=>{
   const view=read("../src/modules/home/ViewBienvenida.jsx");
+  const operational=read("../src/services/operationalSupabase.js");
   assert.match(view,/getRop02LatestByEquipmentProject/);
   assert.match(view,/getRma15OpenOtSummary/);
-  assert.match(sources,/bienvenida:\["lista_equipos","rop02_fs","rop02_jm","rop02_filosur","rop02_zorro","rma15_fs","rma15_jm"\]/);
+  assert.match(sources,/bienvenida:\["lista_equipos"\]/);
+  assert.match(operational,/preloadOperationalSnapshots\(\{sources=\[\]\}\=\{\}\)/);
+  assert.match(operational,/if\(!requested\.length\)return\[\]/);
 });
 
 test("Dashboard conserva el universo anual y costos RMA15 normalizados del original",()=>{

@@ -115,7 +115,7 @@ const DELETE_SOLICITUD_HANDLER=`  const deleteSolicitudRABA03=useCallback(async(
 
 `;
 
-const DELETE_BUTTON=`<button onClick={()=>deleteSolicitudRABA03(r)} style={{border:\`1px solid ${C.red}99\`,background:"transparent",color:C.red,borderRadius:7,padding:"5px 9px",fontSize:10,fontWeight:900,cursor:"pointer",fontFamily:"Inter"}}>Eliminar</button>`;
+const DELETE_BUTTON='<button onClick={()=>deleteSolicitudRABA03(r)} style={{border:"1px solid rgba(220,38,38,.6)",background:"transparent",color:C.red,borderRadius:7,padding:"5px 9px",fontSize:10,fontWeight:900,cursor:"pointer",fontFamily:"Inter"}}>Eliminar</button>';
 
 export function abastecimientoWriteReliabilityVitePlugin(){
   return{

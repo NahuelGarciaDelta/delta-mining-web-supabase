@@ -16,8 +16,9 @@ test("RABA03 escribe en Supabase y deja la réplica legacy a la outbox",()=>{
   assert.doesNotMatch(source,/fetch\(|save_raba03_cant_enviada|save_raba03_codigos/);
 });
 
-test("el snapshot conserva cache corta y cada escritura lo invalida",()=>{
+test("el snapshot conserva cache corta, deduplica requests y cada escritura lo invalida",()=>{
   assert.match(source,/SNAPSHOT_TTL_MS=5000/);
-  assert.match(source,/snapshotPromise&&!force/);
+  assert.match(source,/runDedupedRequest\(SNAPSHOT_REQUEST_KEY/);
+  assert.match(source,/if\(!force&&snapshotCache&&now-snapshotAt<SNAPSHOT_TTL_MS\)/);
   assert.ok((source.match(/invalidateAbastecimientoSnapshot\(\)/g)||[]).length>=6);
 });
