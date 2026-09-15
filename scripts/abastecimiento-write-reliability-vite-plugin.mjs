@@ -96,13 +96,24 @@ export function abastecimientoWriteReliabilityVitePlugin(){
     transform(code,id){
       const file=normalizeId(id);
       if(!file.endsWith("/src/modules/abastecimiento/AbastecimientoModule.jsx"))return null;
-      let next=code;
-      if(!next.includes(DELETE_OLD))throw new Error("[abastecimiento-write] No se encontró deleteRemito esperado");
-      next=next.replace(DELETE_OLD,DELETE_NEW);
-      if(!next.includes(NORMALIZE_OLD))throw new Error("[abastecimiento-write] No se encontró normalizeRow esperado");
-      next=next.replace(NORMALIZE_OLD,NORMALIZE_NEW);
-      if(!SAVE_RE.test(next))throw new Error("[abastecimiento-write] No se encontró guardarDatosRABA03 esperado");
-      next=next.replace(SAVE_RE,SAVE_NEW);
+
+      // Git puede materializar el archivo con CRLF en Windows aunque el repo esté
+      // almacenado con LF. Los transforms históricos comparaban bloques literales
+      // con `\n`, por lo que en Windows fallaban aun cuando el código era idéntico.
+      // Normalizar una sola vez hace el transform determinista en Windows/Linux/CI.
+      let next=String(code).replace(/\r\n/g,"\n");
+
+      if(next.includes(DELETE_OLD))next=next.replace(DELETE_OLD,DELETE_NEW);
+      else if(!next.includes(DELETE_NEW))throw new Error("[abastecimiento-write] No se encontró deleteRemito esperado");
+
+      if(next.includes(NORMALIZE_OLD))next=next.replace(NORMALIZE_OLD,NORMALIZE_NEW);
+      else if(!next.includes(NORMALIZE_NEW))throw new Error("[abastecimiento-write] No se encontró normalizeRow esperado");
+
+      if(SAVE_RE.test(next))next=next.replace(SAVE_RE,SAVE_NEW);
+      else if(!next.includes('const sameText=(a,b)=>String(a||"").trim()===String(b||"").trim();')){
+        throw new Error("[abastecimiento-write] No se encontró guardarDatosRABA03 esperado");
+      }
+
       if(next.indexOf("const assignedRows=useMemo")<next.indexOf("const abastecimientoAllocation=useMemo")){
         throw new Error("[abastecimiento-write] assignedRows quedó antes de la asignación RABA03");
       }
