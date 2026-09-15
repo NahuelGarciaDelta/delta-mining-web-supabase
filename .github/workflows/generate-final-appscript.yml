@@ -1,0 +1,31 @@
+name: Generate final Apps Script
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'docs/appscript/Delta_Backend_Supabase_FINAL_2026-09-09-POST-AUDIT.gs'
+      - 'docs/appscript/Delta_Backend_Supabase_PATCH_2026-09-15-ONDEMAND-OUTBOX-V2.gs'
+      - 'scripts/build-final-appscript.mjs'
+
+permissions:
+  contents: write
+
+jobs:
+  generate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - run: node scripts/build-final-appscript.mjs
+      - run: node --check docs/appscript/Delta_Backend_Supabase_FINAL_2026-09-15.gs
+      - name: Commit generated complete backend
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add docs/appscript/Delta_Backend_Supabase_FINAL_2026-09-15.gs
+          if git diff --cached --quiet; then exit 0; fi
+          git commit -m "chore: generate complete Apps Script 2026-09-15"
+          git push

@@ -89,6 +89,34 @@ const SAVE_NEW=`  const guardarDatosRABA03=useCallback(async()=>{
     }
   },[abastecimientoAllocation.rows,toNumber,loadRaba03]);`;
 
+const DELETE_SOLICITUD_HANDLER=`  const deleteSolicitudRABA03=useCallback(async(row)=>{
+    const numero=String(row?.numeroSolicitud||"").trim();
+    if(!numero){
+      await appAlert("La solicitud no tiene N° de solicitud y no puede eliminarse de forma segura.");
+      return;
+    }
+    if(!(await appConfirm("¿Eliminar completamente la solicitud "+numero+"? Esta acción eliminará todas sus filas de RABA03 y se replicará a la planilla compartida.")))return;
+    setActionLoading("Eliminando solicitud "+numero+"...");
+    setError(null);
+    try{
+      const result=await deleteAbastecimientoRaba03Solicitud(numero);
+      if(!result?.ok)throw new Error("Supabase no confirmó la eliminación de la solicitud.");
+      await loadRaba03();
+      setSuccessAlert({message:"Solicitud "+numero+" eliminada. La baja quedó en cola para replicarse a Seguimiento Compra."});
+    }catch(err){
+      const msg=err?.message||String(err);
+      setError(msg);
+      await loadRaba03().catch(()=>{});
+      await appAlert("No se pudo eliminar la solicitud: "+msg);
+    }finally{
+      setActionLoading("");
+    }
+  },[appAlert,appConfirm,loadRaba03]);
+
+`;
+
+const DELETE_BUTTON=`<button onClick={()=>deleteSolicitudRABA03(r)} style={{border:\`1px solid ${C.red}99\`,background:"transparent",color:C.red,borderRadius:7,padding:"5px 9px",fontSize:10,fontWeight:900,cursor:"pointer",fontFamily:"Inter"}}>Eliminar</button>`;
+
 export function abastecimientoWriteReliabilityVitePlugin(){
   return{
     name:"delta-abastecimiento-write-reliability",
@@ -96,12 +124,12 @@ export function abastecimientoWriteReliabilityVitePlugin(){
     transform(code,id){
       const file=normalizeId(id);
       if(!file.endsWith("/src/modules/abastecimiento/AbastecimientoModule.jsx"))return null;
-
-      // Git puede materializar el archivo con CRLF en Windows aunque el repo esté
-      // almacenado con LF. Los transforms históricos comparaban bloques literales
-      // con `\n`, por lo que en Windows fallaban aun cuando el código era idéntico.
-      // Normalizar una sola vez hace el transform determinista en Windows/Linux/CI.
       let next=String(code).replace(/\r\n/g,"\n");
+
+      const importOld='import { getAbastecimientoSnapshot, saveAbastecimientoRemito, deleteAbastecimientoRemito, setAbastecimientoEstado, appendAbastecimientoRaba03, updateAbastecimientoRaba03 } from "../../services/abastecimientoSupabase.js";';
+      const importNew='import { getAbastecimientoSnapshot, saveAbastecimientoRemito, deleteAbastecimientoRemito, setAbastecimientoEstado, appendAbastecimientoRaba03, updateAbastecimientoRaba03, deleteAbastecimientoRaba03Solicitud } from "../../services/abastecimientoSupabase.js";';
+      if(next.includes(importOld))next=next.replace(importOld,importNew);
+      else if(!next.includes(importNew))throw new Error("[abastecimiento-write] No se encontró import de abastecimientoSupabase esperado");
 
       if(next.includes(DELETE_OLD))next=next.replace(DELETE_OLD,DELETE_NEW);
       else if(!next.includes(DELETE_NEW))throw new Error("[abastecimiento-write] No se encontró deleteRemito esperado");
@@ -110,13 +138,21 @@ export function abastecimientoWriteReliabilityVitePlugin(){
       else if(!next.includes(NORMALIZE_NEW))throw new Error("[abastecimiento-write] No se encontró normalizeRow esperado");
 
       if(SAVE_RE.test(next))next=next.replace(SAVE_RE,SAVE_NEW);
-      else if(!next.includes('const sameText=(a,b)=>String(a||"").trim()===String(b||"").trim();')){
-        throw new Error("[abastecimiento-write] No se encontró guardarDatosRABA03 esperado");
+      else if(!next.includes('const sameText=(a,b)=>String(a||"").trim()===String(b||"").trim();'))throw new Error("[abastecimiento-write] No se encontró guardarDatosRABA03 esperado");
+
+      if(!next.includes("const deleteSolicitudRABA03=useCallback")){
+        const marker="  const renderMainTable=()=>{";
+        if(!next.includes(marker))throw new Error("[abastecimiento-write] No se encontró renderMainTable para inyectar eliminar solicitud");
+        next=next.replace(marker,DELETE_SOLICITUD_HANDLER+marker);
       }
 
-      if(next.indexOf("const assignedRows=useMemo")<next.indexOf("const abastecimientoAllocation=useMemo")){
-        throw new Error("[abastecimiento-write] assignedRows quedó antes de la asignación RABA03");
+      if(!next.includes(">Eliminar</button>")){
+        const rejectButton=/(<button onClick=\{\(\)=>openRejectSolicitud\(r\)\}[\s\S]*?>Rechazar<\/button>)/;
+        if(!rejectButton.test(next))throw new Error("[abastecimiento-write] No se encontró botón Rechazar para agregar Eliminar solicitud");
+        next=next.replace(rejectButton,"$1\n                      "+DELETE_BUTTON);
       }
+
+      if(next.indexOf("const assignedRows=useMemo")<next.indexOf("const abastecimientoAllocation=useMemo"))throw new Error("[abastecimiento-write] assignedRows quedó antes de la asignación RABA03");
       return{code:next,map:null};
     }
   };
