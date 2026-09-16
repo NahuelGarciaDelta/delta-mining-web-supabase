@@ -14,6 +14,12 @@ export function operationalFreshnessVitePlugin(){
       if(!s.includes(timeoutMarker))throw new Error('operationalFreshnessVitePlugin: falta SYNC_FRESH_MS');
       s=s.replace(timeoutMarker,`${timeoutMarker}\n  const OPERATIONAL_SOURCE_TIMEOUT_MS=30000;\n  const withOperationalSourceTimeout=useCallback((promise,key)=>new Promise((resolve,reject)=>{\n    const id=window.setTimeout(()=>reject(new Error(\`Tiempo agotado cargando \${key} desde Supabase\`)),OPERATIONAL_SOURCE_TIMEOUT_MS);\n    Promise.resolve(promise).then(\n      value=>{window.clearTimeout(id);resolve(value);},\n      error=>{window.clearTimeout(id);reject(error);}\n    );\n  }),[]);`);
 
+      // La vista activa consulta solo las versiones livianas cada minuto. Si nada
+      // cambió no descarga datasets; si Supabase cambió, invalida y trae la fuente.
+      const autoRefreshMarker='    const AUTO_REFRESH_MS=5*60*1000; // 5 minutos';
+      if(!s.includes(autoRefreshMarker))throw new Error('operationalFreshnessVitePlugin: falta AUTO_REFRESH_MS');
+      s=s.replace(autoRefreshMarker,'    const AUTO_REFRESH_MS=60*1000; // 1 minuto; fuentes sin cambios no se descargan');
+
       const operationalRead='?await getOperationalSource(key)';
       if(!s.includes(operationalRead))throw new Error('operationalFreshnessVitePlugin: falta lectura operativa Supabase');
       s=s.replace(operationalRead,'?await withOperationalSourceTimeout(getOperationalSource(key),key)');
