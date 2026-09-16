@@ -23,6 +23,9 @@ export function supabaseSourceThrottleVitePlugin(){
     transform(code,id){
       const file=normalizeId(id);
       if(!file.endsWith('/src/App.jsx'))return null;
+      // operationalFreshnessVitePlugin ya serializa y publica cada fuente apenas
+      // termina. Si ese contrato está presente no hay nada más que transformar.
+      if(code.includes('commitSource(key,result.value)')&&code.includes('for(const key of toCheck)'))return null;
       if(code.includes(NEW))return null;
       if(!code.includes(OLD))throw new Error('[supabase-source-throttle] No se encontró la carga paralela esperada');
       return{code:code.replace(OLD,NEW),map:null};
