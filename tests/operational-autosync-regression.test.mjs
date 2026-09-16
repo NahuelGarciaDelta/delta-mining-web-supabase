@@ -21,6 +21,7 @@ test("la app revalida por versión Supabase y no conserva insumos viejos del cac
   assert.match(transformed.code,/getOperationalSourceVersions\(versionKeys\)/);
   assert.match(transformed.code,/const changed=serverVersion>0&&serverVersion!==localVersion/);
   assert.match(transformed.code,/fetchedWithVersion=serverVersion>0/);
+  assert.match(transformed.code,/const AUTO_REFRESH_MS=60\*1000/);
   const rpc=read("supabase/sql/20260916_operational_source_versions.sql");
   assert.match(rpc,/create or replace function public\.operational_source_versions/i);
   assert.match(rpc,/select 'insumos'/i);
