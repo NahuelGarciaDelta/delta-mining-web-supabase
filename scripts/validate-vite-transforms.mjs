@@ -5,6 +5,8 @@ import {progressiveRowsVitePlugin} from './progressive-rows-vite-plugin.mjs';
 import {tallerCentralNavigationVitePlugin} from './taller-central-navigation-vite-plugin.mjs';
 import {atrasoIchcFixesVitePlugin} from './atraso-ichc-fixes-vite-plugin.mjs';
 import {intelligentRefreshVitePlugin} from './intelligent-refresh-vite-plugin.mjs';
+import {operationalFreshnessVitePlugin} from './operational-freshness-vite-plugin.mjs';
+import {supabaseSourceThrottleVitePlugin} from './supabase-source-throttle-vite-plugin.mjs';
 import {vehicleKmMaintenanceVitePlugin} from './vehicle-km-maintenance-vite-plugin.mjs';
 import {pmVehicleScopeVitePlugin} from './pm-vehicle-scope-vite-plugin.mjs';
 import {pmVehicleDisplayVitePlugin} from './pm-vehicle-display-vite-plugin.mjs';
@@ -17,6 +19,8 @@ import {equipmentProfileVehicleArrowsVitePlugin} from './equipment-profile-vehic
 const root=process.cwd();
 const plugins=[
   intelligentRefreshVitePlugin(),
+  operationalFreshnessVitePlugin(),
+  supabaseSourceThrottleVitePlugin(),
   vehicleKmMaintenanceVitePlugin(),
   pmVehicleScopeVitePlugin(),
   pmVehicleDisplayVitePlugin(),
