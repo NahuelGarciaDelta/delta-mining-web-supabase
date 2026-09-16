@@ -6,13 +6,29 @@ const sql=fs.readFileSync("docs/supabase/phase_current_stability_incremental.sql
 const repo=fs.readFileSync("src/data/rop02Repository.js","utf8");
 const historical=fs.readFileSync("src/data/historicalDataService.js","utf8");
 const office=fs.readFileSync("src/modules/oficina-tecnica/OficinaTecnicaModule.jsx","utf8");
+const vite=fs.readFileSync("vite.config.js","utf8");
+const completeRop02Plugin=fs.readFileSync("scripts/rop02-complete-data-vite-plugin.mjs","utf8");
 
-test("ROP02 operacional excluye vehículos antes de SUM, COUNT, facets y paginación",()=>{
+test("ROP02 operacional excluye vehículos antes de SUM, COUNT y facets",()=>{
   assert.match(sql,/rop02_is_excluded_equipment/);
   assert.match(sql,/view public\.rop02_operational_frontend/);
   assert.match(sql,/from public\.rop02_operational_frontend r/);
   assert.match(repo,/params\.operationalOnly\?OPERATIONAL_TABLE:TABLE/);
-  assert.match(office,/operationalOnly:remoteDataset==="rop02"/);
+});
+
+test("ROP02 principal no usa una página parcial de 250 filas como fuente de verdad",()=>{
+  assert.match(vite,/rop02CompleteDataVitePlugin/);
+  assert.match(completeRop02Plugin,/const remoteDataset=view==="rop05"\?"rop05":"";/);
+  assert.match(completeRop02Plugin,/rop02All=\{effectiveRop02\}/);
+  assert.match(completeRop02Plugin,/remoteTotal=\{effectiveRop02\.length\}/);
+  assert.match(completeRop02Plugin,/remoteHasMore=\{false\}/);
+  assert.match(completeRop02Plugin,/sourceHasData\("rop02_jm"\)/);
+});
+
+test("la fecha automática ROP02 avanza con datos nuevos pero respeta fechas históricas elegidas",()=>{
+  assert.match(completeRop02Plugin,/_latestSeen/);
+  assert.match(completeRop02Plugin,/currentDate===previousLatest&&latestRop02Date>previousLatest/);
+  assert.match(completeRop02Plugin,/fecha:shouldAdvance\?latestRop02Date:state\.fecha/);
 });
 
 test("las horas de estados no productivos permanecen en cero y los estados no se eliminan",()=>{
@@ -22,17 +38,16 @@ test("las horas de estados no productivos permanecen en cero y los estados no se
   assert.match(sql,/sum\(coalesce\(f\.cantidad_horas,0\)\)/);
 });
 
-test("KPIs y facets ROP02 provienen de RPC y no de la página visible",()=>{
+test("RPC de KPIs y facets ROP02 sigue disponible para consultas resumidas",()=>{
   assert.match(repo,/rpc\("rop02_filtered_stats"/);
   assert.match(repo,/rpc\("rop02_facets"/);
   assert.match(sql,/create or replace function public\.rop02_facets/);
   assert.match(sql,/p_projects is null or proyecto=any\(p_projects\)/);
-  assert.match(office,/remoteFacets\?\.proyecto\|\|opts\.proyecto/);
-  assert.match(office,/remoteStats\?\.registros\?\?remoteTotal/);
+  assert.match(office,/const localStats=useMemo/);
 });
 
-test("exportación ROP02 recupera todas las páginas del universo operacional",()=>{
-  assert.match(office,/fetchAllDatasetPages\(remoteDataset,\{\.\.\.remoteParams,operationalOnly:remoteDataset==="rop02"\}/);
+test("exportación ROP02 usa el mismo dataset completo mostrado en pantalla",()=>{
+  assert.match(completeRop02Plugin,/onRemoteExport=\{async\(\)=>effectiveRop02\}/);
   assert.match(repo,/while\(offset<total\)/);
 });
 
