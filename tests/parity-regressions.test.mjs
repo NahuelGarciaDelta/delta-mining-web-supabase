@@ -10,7 +10,9 @@ test("Bienvenida filtra por proyecto sin forzar TODOS en estado global",()=>{
   const bienvenida=read("src/modules/home/ViewBienvenida.jsx");
   assert.doesNotMatch(source,/__dmHomeSummary(?:ExternalFilter|Project)/);
   assert.match(source,/selectedSet\.has\(projectFromRow\(row\)\)/);
-  assert.match(source,/const summaryRop02=effectiveDay\?projectFilteredRop02\.filter/);
+  assert.match(source,/const localSummaryRop02=effectiveDay\?projectFilteredRop02\.filter/);
+  assert.match(source,/const liveSummaryRop02=remoteSummary\?\.key===dayScopeKey&&Array\.isArray\(remoteSummary\.rows\)/);
+  assert.match(source,/const summaryRop02=liveSummaryRop02\?\?localSummaryRop02/);
   assert.match(source,/rop02All:projectFilteredRop02/);
   assert.match(source,/summaryRop02,/);
   assert.doesNotMatch(source,/rop02All:(?:filteredRop02|summaryRop02)/);
