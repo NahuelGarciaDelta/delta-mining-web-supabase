@@ -77,8 +77,8 @@ test('Sheets especiales se sincronizan de forma autoritativa hacia Supabase',()=
     assert.match(sql,new RegExp(dataset));
   }
   assert.match(patch,/sync_authoritative_app_dataset/);
-  assert.match(sql,/delete from public\.app_licitaciones/);
-  assert.match(sql,/delete from public\.app_pm_config/);
+  assert.match(sql,/delete from public\.app_licitaciones/i);
+  assert.match(sql,/delete from public\.app_pm_config/i);
 });
 
 test('Sheets usa sincronización incremental cada 5 min y reconciliación completa horaria',()=>{
@@ -113,6 +113,6 @@ test('Migración de rendimiento elimina polling legacy y duplicados exactos',()=
   assert.match(sql,/refresh_delta_special_cache/);
   assert.match(sql,/refresh_rop02_canonical_from_appscript/);
   assert.match(sql,/cron\.unschedule/);
-  assert.match(sql,/drop index if exists public\.delta_dataset_rows_dataset_source_row_key/);
-  assert.match(sql,/drop policy if exists "ROP02 lectura"/);
+  assert.match(sql,/drop index if exists public\.delta_dataset_rows_dataset_source_row_key/i);
+  assert.match(sql,/drop policy if exists "ROP02 lectura"/i);
 });
