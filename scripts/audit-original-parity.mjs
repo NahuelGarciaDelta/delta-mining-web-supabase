@@ -35,7 +35,7 @@ const contracts=[
  ['scripts/abastecimiento-write-reliability-vite-plugin.mjs',[/deleteAbastecimientoRaba03Solicitud/,/deleteSolicitudRABA03/,/>Eliminar<\/button>/,/cantidadEnviadaFuente/,/\.filter\(r=>r\._changed\)/]],
  ['src/modules/abastecimiento/enviosSinSolicitud.js',[/allocateAbastecimientoRemitos/,/Math\.min/,/remaining|restante/i]],
  ['src/shared/rop02State.js',[/OD/,/FS/,/EM/]],
- ['src/data/operationalRepository.js',[/rop02_frontend/,/ROP02_SOURCE_KEY_PREFIX/]],
+ ['src/data/operationalRepository.js',[/rop02_frontend/,/ROP02_SOURCE_DATASETS/,/\.eq\("source_dataset",sourceDataset\)/,/source_dataset,source_row/]],
  ['src/modules/auth/Login.jsx',[/AUTH_MAX_ATTEMPTS/,/authenticateUser/]],
 ];
 for(const [file,patterns] of contracts){
