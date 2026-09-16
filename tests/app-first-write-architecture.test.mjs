@@ -80,3 +80,39 @@ test('Sheets especiales se sincronizan de forma autoritativa hacia Supabase',()=
   assert.match(sql,/delete from public\.app_licitaciones/);
   assert.match(sql,/delete from public\.app_pm_config/);
 });
+
+test('Sheets usa sincronización incremental cada 5 min y reconciliación completa horaria',()=>{
+  const incremental=read('docs/appscript/Delta_Backend_Supabase_PATCH_2026-09-16-INCREMENTAL-SYNC-V4.gs');
+  const lockfix=read('docs/appscript/Delta_Backend_Supabase_PATCH_2026-09-16-INCREMENTAL-LOCKFIX-V4B.gs');
+  const generator=read('scripts/build-final-appscript.mjs');
+  assert.match(incremental,/2026-09-16-INCREMENTAL-OUTBOX-V4/);
+  assert.match(incremental,/sincronizarDeltaCambiosPendientes_/);
+  assert.match(incremental,/reconciliarDeltaConSupabase_/);
+  assert.match(incremental,/everyMinutes\(5\)/);
+  assert.match(incremental,/everyHours\(1\)/);
+  assert.match(incremental,/deltaMarkDatasetsDirty_/);
+  assert.match(lockfix,/deltaTakeDirtySnapshot_/);
+  assert.match(lockfix,/deltaMarkDatasetsDirty_\(failed\)/);
+  assert.match(generator,/INCREMENTAL-SYNC-V4/);
+  assert.match(generator,/INCREMENTAL-LOCKFIX-V4B/);
+});
+
+test('ROP02 usa source_dataset exacto y la vista expone procedencia física',()=>{
+  const repo=read('src/data/operationalRepository.js');
+  const sql=read('supabase/sql/20260916_optimize_rop02_source_reads.sql');
+  assert.match(repo,/\.eq\("source_dataset",sourceDataset\)/);
+  assert.doesNotMatch(repo,/\.like\("source_key"/);
+  assert.match(repo,/source_dataset,source_row/);
+  assert.match(sql,/rop02_source_dataset_fecha_source_key_idx/);
+  assert.match(sql,/source_dataset,/);
+  assert.match(sql,/source_row/);
+});
+
+test('Migración de rendimiento elimina polling legacy y duplicados exactos',()=>{
+  const sql=read('supabase/sql/20260916_reduce_legacy_polling_and_duplicate_indexes.sql');
+  assert.match(sql,/refresh_delta_special_cache/);
+  assert.match(sql,/refresh_rop02_canonical_from_appscript/);
+  assert.match(sql,/cron\.unschedule/);
+  assert.match(sql,/drop index if exists public\.delta_dataset_rows_dataset_source_row_key/);
+  assert.match(sql,/drop policy if exists "ROP02 lectura"/);
+});
