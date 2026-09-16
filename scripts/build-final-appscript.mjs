@@ -6,6 +6,8 @@ const base=path.join(root,"docs/appscript/Delta_Backend_Supabase_FINAL_2026-09-0
 const patches=[
   path.join(root,"docs/appscript/Delta_Backend_Supabase_PATCH_2026-09-15-ONDEMAND-OUTBOX-V2.gs"),
   path.join(root,"docs/appscript/Delta_Backend_Supabase_PATCH_2026-09-15-AUTHORITATIVE-SHEETS-V3.gs"),
+  path.join(root,"docs/appscript/Delta_Backend_Supabase_PATCH_2026-09-16-INCREMENTAL-SYNC-V4.gs"),
+  path.join(root,"docs/appscript/Delta_Backend_Supabase_PATCH_2026-09-16-INCREMENTAL-LOCKFIX-V4B.gs"),
 ];
 const out=path.join(root,"docs/appscript/Delta_Backend_Supabase_FINAL_2026-09-15.gs");
 
