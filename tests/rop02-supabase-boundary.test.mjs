@@ -18,7 +18,9 @@ test("las cuatro fuentes ROP02 declaradas se resuelven desde Supabase",()=>{
   assert.match(repo,/getRop02Source_/);
   assert.match(repo,/ROP02_FRONTEND_TABLE="rop02_frontend"/);
   assert.match(repo,/\.from\(ROP02_FRONTEND_TABLE\)/);
-  assert.match(repo,/\.like\("source_key",`\$\{sourceKeyPrefix\}%`\)/);
+  assert.match(repo,/\.eq\("source_dataset",sourceDataset\)/);
+  assert.match(repo,/source_dataset,source_row/);
+  assert.doesNotMatch(repo,/\.like\("source_key"/);
   assert.doesNotMatch(repo,/getRop02Source_[\s\S]*?\.from\("rop02"\)/);
 });
 
