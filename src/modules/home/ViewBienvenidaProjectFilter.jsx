@@ -2,10 +2,12 @@ import React from "react";
 import { createPortal } from "react-dom";
 import ViewBienvenida from "./ViewBienvenida.jsx";
 import { collectProjects, projectFromRow, projectLabel } from "../../shared/projects.js";
+import { getHomeRop02AvailableDays, getHomeRop02DayRows } from "../../data/homeRop02Data.js";
 
 const STORAGE_KEY="dm_home_summary_project_v3";
 const LEGACY_PROJECTS=new Set(["JOSE MARIA","FILO DEL SOL","FILO SUR","EL ZORRO"]);
 const EMPTY_RMA_SENTINEL={__dmHomeEmptyProject:true};
+const HOME_DAYS_REFRESH_MS=5*60*1000;
 const normalizeDateKey=value=>{
   if(value instanceof Date&&!Number.isNaN(value.getTime()))return `${value.getFullYear()}-${String(value.getMonth()+1).padStart(2,"0")}-${String(value.getDate()).padStart(2,"0")}`;
   const raw=String(value??"").trim();
@@ -50,6 +52,9 @@ function readInitialSelection(){
 export default function ViewBienvenidaProjectFilter(props){
   const [selection,setSelection]=React.useState(readInitialSelection);
   const [selectedDay,setSelectedDay]=React.useState("");
+  const [remoteDays,setRemoteDays]=React.useState(null);
+  const [remoteSummary,setRemoteSummary]=React.useState(null);
+  const [daysRevision,setDaysRevision]=React.useState(0);
   const [portalHost,setPortalHost]=React.useState(null);
   const [open,setOpen]=React.useState(false);
   const controlRef=React.useRef(null);
@@ -64,14 +69,53 @@ export default function ViewBienvenidaProjectFilter(props){
   },[selection,projectValues]);
   const allSelected=selection===null||selectedValues.length===projectValues.length;
   const selectedSet=React.useMemo(()=>new Set(selectedValues),[selectedValues]);
+  const queryProjects=React.useMemo(()=>allSelected?null:[...selectedValues].sort(),[allSelected,selectedValues]);
+  const projectScopeKey=allSelected?"*":queryProjects.join("|");
   const projectFilteredRop02=React.useMemo(()=>{
     const source=Array.isArray(props.rop02All)?props.rop02All:[];
     return allSelected?source:source.filter(row=>selectedSet.has(projectFromRow(row)));
   },[props.rop02All,allSelected,selectedSet]);
-  const availableDays=React.useMemo(()=>[...new Set(projectFilteredRop02.map(dateFromRop02Row).filter(Boolean))].sort((a,b)=>b.localeCompare(a)),[projectFilteredRop02]);
+  const localAvailableDays=React.useMemo(()=>[...new Set(projectFilteredRop02.map(dateFromRop02Row).filter(Boolean))].sort((a,b)=>b.localeCompare(a)),[projectFilteredRop02]);
+  const availableDays=Array.isArray(remoteDays)?remoteDays:localAvailableDays;
   const effectiveDay=selectedDay&&availableDays.includes(selectedDay)?selectedDay:(availableDays[0]||"");
+  const dayScopeKey=`${projectScopeKey}|${effectiveDay}`;
 
   React.useEffect(()=>{try{window.localStorage.setItem(STORAGE_KEY,JSON.stringify(selection===null?"TODOS":selection));}catch(_){}},[selection]);
+  React.useEffect(()=>{
+    const refresh=()=>setDaysRevision(value=>value+1);
+    const id=window.setInterval(refresh,HOME_DAYS_REFRESH_MS);
+    const onVisible=()=>{if(!document.hidden)refresh();};
+    const onOnline=()=>refresh();
+    document.addEventListener("visibilitychange",onVisible);
+    window.addEventListener("online",onOnline);
+    return()=>{
+      window.clearInterval(id);
+      document.removeEventListener("visibilitychange",onVisible);
+      window.removeEventListener("online",onOnline);
+    };
+  },[]);
+  React.useEffect(()=>{
+    let alive=true;
+    setRemoteDays(null);
+    getHomeRop02AvailableDays(queryProjects,90).then(rows=>{
+      if(!alive)return;
+      setRemoteDays(rows.map(row=>row.fecha));
+    }).catch(()=>{
+      if(alive)setRemoteDays(localAvailableDays);
+    });
+    return()=>{alive=false;};
+  },[projectScopeKey,queryProjects,daysRevision,localAvailableDays]);
+  React.useEffect(()=>{
+    let alive=true;
+    if(!effectiveDay){setRemoteSummary(null);return()=>{alive=false;};}
+    setRemoteSummary(previous=>previous?.key===dayScopeKey?previous:null);
+    getHomeRop02DayRows(effectiveDay,queryProjects).then(rows=>{
+      if(alive)setRemoteSummary({key:dayScopeKey,rows});
+    }).catch(()=>{
+      if(alive)setRemoteSummary({key:dayScopeKey,rows:null,error:true});
+    });
+    return()=>{alive=false;};
+  },[dayScopeKey,effectiveDay,queryProjects]);
   React.useEffect(()=>{
     let frame=0;
     const findHost=()=>{
@@ -93,7 +137,10 @@ export default function ViewBienvenidaProjectFilter(props){
   const filteredProps=React.useMemo(()=>{
     const filterRows=rows=>Array.isArray(rows)?(allSelected?rows:rows.filter(row=>selectedSet.has(projectFromRow(row)))):rows;
     const filteredRma=filterRows(props.rma15);
-    const summaryRop02=effectiveDay?projectFilteredRop02.filter(row=>dateFromRop02Row(row)===effectiveDay):projectFilteredRop02;
+    const localSummaryRop02=effectiveDay?projectFilteredRop02.filter(row=>dateFromRop02Row(row)===effectiveDay):projectFilteredRop02;
+    const liveSummaryRop02=remoteSummary?.key===dayScopeKey&&Array.isArray(remoteSummary.rows)?remoteSummary.rows:null;
+    const summaryRop02=liveSummaryRop02??localSummaryRop02;
+    const hasDayData=Boolean(effectiveDay)&&(Array.isArray(liveSummaryRop02)||localSummaryRop02.length>0);
     return {
       ...props,
       // El Dashboard embebido necesita el histórico completo del alcance de
@@ -102,9 +149,9 @@ export default function ViewBienvenidaProjectFilter(props){
       summaryRop02,
       rop05:filterRows(props.rop05),
       rma15:Array.isArray(filteredRma)&&filteredRma.length?filteredRma:[EMPTY_RMA_SENTINEL],
-      summaryDayFiltered:Boolean(effectiveDay),
+      summaryDayFiltered:hasDayData,
     };
-  },[props,allSelected,selectedSet,projectFilteredRop02,effectiveDay]);
+  },[props,allSelected,selectedSet,projectFilteredRop02,effectiveDay,remoteSummary,dayScopeKey]);
 
   const toggleProject=value=>{
     setSelectedDay("");
