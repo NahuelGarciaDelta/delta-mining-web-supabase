@@ -6,6 +6,10 @@ on:
     paths:
       - 'docs/appscript/Delta_Backend_Supabase_FINAL_2026-09-09-POST-AUDIT.gs'
       - 'docs/appscript/Delta_Backend_Supabase_PATCH_2026-09-15-ONDEMAND-OUTBOX-V2.gs'
+      - 'docs/appscript/Delta_Backend_Supabase_PATCH_2026-09-15-AUTHORITATIVE-SHEETS-V3.gs'
+      - 'docs/appscript/Delta_Backend_Supabase_PATCH_2026-09-16-INCREMENTAL-SYNC-V4.gs'
+      - 'docs/appscript/Delta_Backend_Supabase_PATCH_2026-09-16-INCREMENTAL-LOCKFIX-V4B.gs'
+      - 'docs/appscript/Delta_Backend_Supabase_PATCH_2026-09-16-AUTOSYNC-V5.gs'
       - 'scripts/build-final-appscript.mjs'
       - '.github/workflows/generate-final-appscript.yml'
 
