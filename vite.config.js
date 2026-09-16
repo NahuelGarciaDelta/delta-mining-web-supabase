@@ -7,6 +7,7 @@ import { tallerCentralNavigationVitePlugin } from './scripts/taller-central-navi
 import { atrasoIchcFixesVitePlugin } from './scripts/atraso-ichc-fixes-vite-plugin.mjs'
 import { intelligentRefreshVitePlugin } from './scripts/intelligent-refresh-vite-plugin.mjs'
 import { supabaseSourceThrottleVitePlugin } from './scripts/supabase-source-throttle-vite-plugin.mjs'
+import { operationalFreshnessVitePlugin } from './scripts/operational-freshness-vite-plugin.mjs'
 import { rop02CompleteDataVitePlugin } from './scripts/rop02-complete-data-vite-plugin.mjs'
 import { vehicleKmMaintenanceVitePlugin } from './scripts/vehicle-km-maintenance-vite-plugin.mjs'
 import { pmVehicleScopeVitePlugin } from './scripts/pm-vehicle-scope-vite-plugin.mjs'
@@ -18,7 +19,7 @@ import { equipmentProfileLocationVehicleLabelVitePlugin } from './scripts/equipm
 import { equipmentProfileVehicleArrowsVitePlugin } from './scripts/equipment-profile-vehicle-arrows-vite-plugin.mjs'
 
 export default defineConfig({
-  plugins: [intelligentRefreshVitePlugin(), supabaseSourceThrottleVitePlugin(), rop02CompleteDataVitePlugin(), vehicleKmMaintenanceVitePlugin(), pmVehicleScopeVitePlugin(), pmVehicleDisplayVitePlugin(), equipmentProfileCodeHistoryVitePlugin(), equipmentProfileAliasProjectMultiselectVitePlugin(), equipmentProfileDeduplicateLastRop02VitePlugin(), equipmentProfileLocationVehicleLabelVitePlugin(), equipmentProfileVehicleArrowsVitePlugin(), tallerCentralNavigationVitePlugin(), atrasoIchcFixesVitePlugin(), licitacionesDeleteSupabaseVitePlugin(), abastecimientoWriteReliabilityVitePlugin(), progressiveRowsVitePlugin(), react()],
+  plugins: [intelligentRefreshVitePlugin(), supabaseSourceThrottleVitePlugin(), operationalFreshnessVitePlugin(), rop02CompleteDataVitePlugin(), vehicleKmMaintenanceVitePlugin(), pmVehicleScopeVitePlugin(), pmVehicleDisplayVitePlugin(), equipmentProfileCodeHistoryVitePlugin(), equipmentProfileAliasProjectMultiselectVitePlugin(), equipmentProfileDeduplicateLastRop02VitePlugin(), equipmentProfileLocationVehicleLabelVitePlugin(), equipmentProfileVehicleArrowsVitePlugin(), tallerCentralNavigationVitePlugin(), atrasoIchcFixesVitePlugin(), licitacionesDeleteSupabaseVitePlugin(), abastecimientoWriteReliabilityVitePlugin(), progressiveRowsVitePlugin(), react()],
   server: {
     host: '0.0.0.0'
   },
